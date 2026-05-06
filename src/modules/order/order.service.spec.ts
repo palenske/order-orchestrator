@@ -13,6 +13,13 @@ describe('OrderService', () => {
       idempotencyKey: 'key-1',
       status: 'RECEIVED' as const,
       currency: 'USD',
+      totalAmount: null,
+      conversionRate: null,
+      enrichedData: null,
+      customerId: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      processedAt: null,
       customer: null,
       items: [],
     },
@@ -25,7 +32,10 @@ describe('OrderService', () => {
     };
 
     const app: TestingModule = await Test.createTestingModule({
-      providers: [OrderService, { provide: OrderRepository, useValue: mockRepository }],
+      providers: [
+        OrderService,
+        { provide: OrderRepository, useValue: mockRepository },
+      ],
     }).compile();
 
     service = app.get<OrderService>(OrderService);
