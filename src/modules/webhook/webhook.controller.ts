@@ -1,12 +1,14 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
 import { WebhookService } from './webhook.service';
+import { CreateOrderWebhookDto } from './dto/create-order-webhook.dto';
 
-@Controller('webhook')
+@Controller('webhooks')
 export class WebhookController {
   constructor(private readonly webhookService: WebhookService) {}
 
-  @Get()
-  receiveOrderWebhook(): string {
-    return this.webhookService.receiveOrderWebhook();
+  @Post('orders')
+  @HttpCode(HttpStatus.CREATED)
+  receiveOrderWebhook(@Body() createOrderWebhookDto: CreateOrderWebhookDto) {
+    return this.webhookService.receiveOrderWebhook(createOrderWebhookDto);
   }
 }
