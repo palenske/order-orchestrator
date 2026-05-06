@@ -96,14 +96,25 @@ Todas as chamadas possuem timeout de 10s via `AbortController`.
 
 ## Assinatura do webhook
 
-Quando `WEBHOOK_SECRET` está configurado, o header `x-webhook-signature` deve conter o HMAC-SHA256 do body:
+Se `WEBHOOK_SECRET` estiver vazio, a verificação é desabilitada e o header não é necessário.
 
-```bash
-SIGNATURE=$(echo -n '{"order_id":"1",...}' | openssl dgst -sha256 -hmac "sua-chave" | awk '{print $NF}')
-curl -H "x-webhook-signature: $SIGNATURE" ...
+Para habilitar, defina qualquer valor no `.env`:
+
+```
+WEBHOOK_SECRET=minha-chave
 ```
 
-Sem `WEBHOOK_SECRET`, a verificação é pulada.
+Então envie o header `x-webhook-signature` com o HMAC-SHA256 do body:
+
+```bash
+# Exemplo com WEBHOOK_SECRET=minha-chave
+SIGNATURE=$(echo -n '{"order_id":"ext-123","customer":{"email":"user@example.com","name":"Ana"},"items":[{"sku":"ABC123","qty":2,"unit_price":59.9}],"currency":"EUR","idempotency_key":"uuid-1"}' | openssl dgst -sha256 -hmac "minha-chave" | awk '{print $NF}')
+
+curl -X POST http://localhost:3000/webhooks/orders \
+  -H "Content-Type: application/json" \
+  -H "x-webhook-signature: $SIGNATURE" \
+  -d '{"order_id":"ext-123","customer":{"email":"user@example.com","name":"Ana"},"items":[{"sku":"ABC123","qty":2,"unit_price":59.9}],"currency":"EUR","idempotency_key":"uuid-1"}'
+```
 
 ## Stack
 
