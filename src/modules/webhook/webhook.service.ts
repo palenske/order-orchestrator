@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { CreateOrderWebhookDto } from './dto/create-order-webhook.dto';
+import type { CreateOrderWebhookDto } from './dto/create-order-webhook.dto';
 
 @Injectable()
 export class WebhookService {

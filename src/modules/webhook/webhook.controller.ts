@@ -1,6 +1,6 @@
 import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
 import { WebhookService } from './webhook.service';
-import { CreateOrderWebhookDto } from './dto/create-order-webhook.dto';
+import type { CreateOrderWebhookDto } from './dto/create-order-webhook.dto';
 
 @Controller('webhooks')
 export class WebhookController {
