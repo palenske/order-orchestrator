@@ -11,23 +11,34 @@ export interface EnrichedData {
     target: string;
     rate: number;
   };
-  ipInfo?: {
-    ip: string;
-    country: string;
-    city: string;
-    isp: string;
-  } | undefined;
-  cepInfo?: {
-    cep: string;
-    street: string;
-    neighborhood: string;
-    city: string;
-    state: string;
-  } | undefined;
-  productsInfo?: {
-    validated: boolean;
-    products: Array<{ sku: string; name: string; price: number; found: boolean }>;
-  } | undefined;
+  ipInfo?:
+    | {
+        ip: string;
+        country: string;
+        city: string;
+        isp: string;
+      }
+    | undefined;
+  cepInfo?:
+    | {
+        cep: string;
+        street: string;
+        neighborhood: string;
+        city: string;
+        state: string;
+      }
+    | undefined;
+  productsInfo?:
+    | {
+        validated: boolean;
+        products: Array<{
+          sku: string;
+          name: string;
+          price: number;
+          found: boolean;
+        }>;
+      }
+    | undefined;
 }
 
 @Injectable()
@@ -40,7 +51,10 @@ export class EnrichmentService {
 
     const items = (order as any).items || [];
 
-    const exchangeResult = await this.getExchangeRateApi(order.currency, this.targetCurrency);
+    const exchangeResult = await this.getExchangeRateApi(
+      order.currency,
+      this.targetCurrency,
+    );
     const rate = exchangeResult?.rate ?? 1;
 
     const totalAmount = items.reduce(
@@ -64,10 +78,15 @@ export class EnrichmentService {
     };
   }
 
-  private async getExchangeRateApi(from: string, to: string): Promise<EnrichedData['exchangeRateApi']> {
+  private async getExchangeRateApi(
+    from: string,
+    to: string,
+  ): Promise<EnrichedData['exchangeRateApi']> {
     try {
-      const response = await fetch(`https://api.exchangerate-api.com/v4/latest/${from}`);
-      const data = await response.json() as {
+      const response = await fetch(
+        `https://api.exchangerate-api.com/v4/latest/${from}`,
+      );
+      const data = (await response.json()) as {
         base_code: string;
         rates: Record<string, number>;
       };
@@ -87,7 +106,7 @@ export class EnrichmentService {
 
     try {
       const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
-      const data = await response.json() as {
+      const data = (await response.json()) as {
         cep?: string;
         logradouro?: string;
         bairro?: string;
@@ -116,8 +135,16 @@ export class EnrichmentService {
 
   private async getIpInfo(): Promise<EnrichedData['ipInfo']> {
     try {
-      const response = await fetch('http://ip-api.com/json/?fields=status,country,city,isp,query');
-      const data = await response.json() as { status: string; query?: string; country?: string; city?: string; isp?: string };
+      const response = await fetch(
+        'http://ip-api.com/json/?fields=status,country,city,isp,query',
+      );
+      const data = (await response.json()) as {
+        status: string;
+        query?: string;
+        country?: string;
+        city?: string;
+        isp?: string;
+      };
       if (data.status === 'fail') return undefined;
       return {
         ip: data.query ?? '',
@@ -131,10 +158,15 @@ export class EnrichmentService {
     }
   }
 
-  private async validateProducts(items: any[]): Promise<EnrichedData['productsInfo']> {
+  private async validateProducts(
+    items: any[],
+  ): Promise<EnrichedData['productsInfo']> {
     try {
       const response = await fetch('https://fakestoreapi.com/products');
-      const products = await response.json() as Array<{ title: string; price: number }>;
+      const products = (await response.json()) as Array<{
+        title: string;
+        price: number;
+      }>;
 
       const validated = items.map((item) => {
         const product = products.find((p) => p.price === item.unitPrice);

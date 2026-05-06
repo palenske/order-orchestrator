@@ -73,7 +73,9 @@ describe('WebhookController', () => {
     it('should throw ConflictException for duplicate idempotency_key', async () => {
       mockRepo.findByIdempotencyKey.mockResolvedValue({ id: 'existing' });
 
-      await expect(service.receiveOrderWebhook(mockDto)).rejects.toThrow(ConflictException);
+      await expect(service.receiveOrderWebhook(mockDto)).rejects.toThrow(
+        ConflictException,
+      );
     });
 
     it('should throw BadRequestException for invalid payload - missing order_id', async () => {

@@ -40,7 +40,10 @@ describe('OrderRepository', () => {
     };
 
     const app: TestingModule = await Test.createTestingModule({
-      providers: [OrderRepository, { provide: PrismaService, useValue: mockPrisma }],
+      providers: [
+        OrderRepository,
+        { provide: PrismaService, useValue: mockPrisma },
+      ],
     }).compile();
 
     repository = app.get<OrderRepository>(OrderRepository);
@@ -117,7 +120,10 @@ describe('OrderRepository', () => {
         status: OrderStatus.ENRICHED,
       });
 
-      const result = await repository.updateStatus('order-1', OrderStatus.ENRICHED);
+      const result = await repository.updateStatus(
+        'order-1',
+        OrderStatus.ENRICHED,
+      );
       expect(result.status).toBe(OrderStatus.ENRICHED);
     });
   });

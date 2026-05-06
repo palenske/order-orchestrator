@@ -12,7 +12,13 @@ describe('EnrichmentService', () => {
     status: OrderStatus.RECEIVED,
     currency: 'EUR',
     items: [
-      { id: 'item-1', sku: 'SKU1', quantity: 2, unitPrice: 50, orderId: 'order-1' },
+      {
+        id: 'item-1',
+        sku: 'SKU1',
+        quantity: 2,
+        unitPrice: 50,
+        orderId: 'order-1',
+      },
     ],
   } as any;
 

@@ -1,4 +1,9 @@
-import { Injectable, Logger, ConflictException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ConflictException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { OrderRepository } from '../order/repositories/order.repository';
@@ -18,7 +23,9 @@ export class WebhookService {
     this.logger.log(`Webhook: ${dto.order_id}`);
     this.validatePayload(dto);
 
-    const existingOrder = await this.orderRepository.findByIdempotencyKey(dto.idempotency_key);
+    const existingOrder = await this.orderRepository.findByIdempotencyKey(
+      dto.idempotency_key,
+    );
     if (existingOrder) {
       throw new ConflictException('Order already processed');
     }
@@ -37,10 +44,14 @@ export class WebhookService {
       })),
     });
 
-    await this.ordersQueue.add('enrich-order', { orderId: order.id }, {
-      attempts: 3,
-      backoff: { type: 'exponential', delay: 1000 },
-    });
+    await this.ordersQueue.add(
+      'enrich-order',
+      { orderId: order.id },
+      {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 1000 },
+      },
+    );
 
     this.logger.log(`Order enqueued: ${order.id}`);
 
@@ -75,10 +86,7 @@ export class WebhookService {
       if (!item.qty || typeof item.qty !== 'number' || item.qty < 1) {
         throw new BadRequestException('Invalid item qty');
       }
-      if (
-        typeof item.unit_price !== 'number' ||
-        item.unit_price <= 0
-      ) {
+      if (typeof item.unit_price !== 'number' || item.unit_price <= 0) {
         throw new BadRequestException('Invalid item unit_price');
       }
     }

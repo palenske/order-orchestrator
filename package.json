@@ -25,7 +25,7 @@
     "db:generate": "prisma generate",
     "db:studio": "prisma studio"
   },
-"dependencies": {
+  "dependencies": {
     "@nestjs/bullmq": "^11.0.4",
     "@nestjs/common": "^11.0.1",
     "@nestjs/core": "^11.0.1",

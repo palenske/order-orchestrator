@@ -27,10 +27,14 @@ export class FailureController {
   async reprocessFailure(@Param('id') id: string) {
     const orderId = id;
     await this.orderRepository.updateStatus(orderId, OrderStatus.RECEIVED);
-    await this.ordersQueue.add('enrich-order', { orderId }, {
-      attempts: 3,
-      backoff: { type: 'exponential', delay: 1000 },
-    });
+    await this.ordersQueue.add(
+      'enrich-order',
+      { orderId },
+      {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 1000 },
+      },
+    );
     return { success: true, message: `Order ${orderId} re-enqueued` };
   }
 }

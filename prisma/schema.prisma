@@ -16,53 +16,53 @@ enum OrderStatus {
 }
 
 model Customer {
-  id        String   @id @default(uuid())
-  email     String
-  name      String
-  externalId String? @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  orders    Order[]
+  id         String   @id @default(uuid())
+  email      String
+  name       String
+  externalId String?  @unique
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  orders     Order[]
 }
 
 model Order {
-  id              String      @id @default(uuid())
-  externalId      String      @unique
-  idempotencyKey   String      @unique
-  status          OrderStatus @default(RECEIVED)
-  currency        String
-  totalAmount     Float?
+  id             String      @id @default(uuid())
+  externalId     String      @unique
+  idempotencyKey String      @unique
+  status         OrderStatus @default(RECEIVED)
+  currency       String
+  totalAmount    Float?
   conversionRate Float?
   enrichedData   Json?
 
-  customerId      String?
-  customer       Customer?   @relation(fields: [customerId], references: [id])
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id])
 
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-  processedAt    DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  processedAt DateTime?
 
-  items          OrderItem[]
+  items OrderItem[]
 }
 
 model OrderItem {
-  id         String  @id @default(uuid())
-  sku        String
-  quantity   Int
-  unitPrice  Float
-  orderId    String
-  order      Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  id        String @id @default(uuid())
+  sku       String
+  quantity  Int
+  unitPrice Float
+  orderId   String
+  order     Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
 }
 
 model OrderFailure {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   orderId     String
-  error      String
-  attempts   Int      @default(0)
-  lastAttempt DateTime @default(now())
-  resolved   Boolean  @default(false)
-  resolvedAt DateTime?
-  createdAt  DateTime @default(now())
+  error       String
+  attempts    Int       @default(0)
+  lastAttempt DateTime  @default(now())
+  resolved    Boolean   @default(false)
+  resolvedAt  DateTime?
+  createdAt   DateTime  @default(now())
 
   @@index([orderId])
 }

@@ -16,14 +16,22 @@ describe('Order Queue Flow', () => {
     currency: 'EUR',
     status: OrderStatus.RECEIVED,
     items: [
-      { id: 'item-1', sku: 'SKU1', quantity: 2, unitPrice: 50, orderId: 'order-test-1' },
+      {
+        id: 'item-1',
+        sku: 'SKU1',
+        quantity: 2,
+        unitPrice: 50,
+        orderId: 'order-test-1',
+      },
     ],
   } as any;
 
   beforeEach(async () => {
     const mockRepo = {
       findById: jest.fn().mockResolvedValue(mockOrder),
-      updateStatus: jest.fn().mockResolvedValue({ ...mockOrder, status: OrderStatus.ENRICHED }),
+      updateStatus: jest
+        .fn()
+        .mockResolvedValue({ ...mockOrder, status: OrderStatus.ENRICHED }),
       createFailure: jest.fn(),
       findFailures: jest.fn().mockResolvedValue([]),
     };
@@ -43,7 +51,9 @@ describe('Order Queue Flow', () => {
 
   describe('Order Processing Flow', () => {
     it('should update status to PROCESSING when starting', async () => {
-      await processor.handleEnrichOrder({ data: { orderId: 'order-test-1' } } as any);
+      await processor.handleEnrichOrder({
+        data: { orderId: 'order-test-1' },
+      } as any);
 
       expect(repository.updateStatus).toHaveBeenCalledWith(
         'order-test-1',
@@ -52,14 +62,18 @@ describe('Order Queue Flow', () => {
     });
 
     it('should call enrichment service', async () => {
-      const result = await processor.handleEnrichOrder({ data: { orderId: 'order-test-1' } } as any);
+      const result = await processor.handleEnrichOrder({
+        data: { orderId: 'order-test-1' },
+      } as any);
 
       expect(result).toBeDefined();
       expect(result.enrichedData).toBeDefined();
     });
 
     it('should update status to ENRICHED after success', async () => {
-      await processor.handleEnrichOrder({ data: { orderId: 'order-test-1' } } as any);
+      await processor.handleEnrichOrder({
+        data: { orderId: 'order-test-1' },
+      } as any);
 
       expect(repository.updateStatus).toHaveBeenCalledWith(
         'order-test-1',
@@ -123,7 +137,10 @@ describe('Order Queue Flow', () => {
     });
 
     it('should transition to FAILED_ENRICHMENT on error', async () => {
-      await repository.updateStatus('order-test-1', OrderStatus.FAILED_ENRICHMENT);
+      await repository.updateStatus(
+        'order-test-1',
+        OrderStatus.FAILED_ENRICHMENT,
+      );
       expect(repository.updateStatus).toHaveBeenCalledWith(
         'order-test-1',
         OrderStatus.FAILED_ENRICHMENT,

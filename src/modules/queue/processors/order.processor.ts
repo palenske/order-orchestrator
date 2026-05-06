@@ -55,6 +55,9 @@ export class OrderProcessor {
     this.logger.error(`Order failed: ${orderId}`);
 
     await this.orderRepository.createFailure(orderId, error.message);
-    await this.orderRepository.updateStatus(orderId, OrderStatus.FAILED_ENRICHMENT);
+    await this.orderRepository.updateStatus(
+      orderId,
+      OrderStatus.FAILED_ENRICHMENT,
+    );
   }
 }
