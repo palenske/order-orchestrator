@@ -35,6 +35,20 @@ pnpm test                # unitários
 pnpm test:e2e            # e2e (requer serviços rodando)
 ```
 
+## Teste rápido
+
+```bash
+curl -X POST "https://order-orchestrator.up.railway.app/webhooks/orders" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "order_id": "ext-123",
+    "customer": { "email": "user@example.com", "name": "Ana" },
+    "items": [{ "sku": "ABC123", "qty": 2, "unit_price": 59.9 }],
+    "currency": "USD",
+    "idempotency_key": "f390a7b8-406c-4436-958f-9cdcd732c8c1"
+  }'
+```
+
 ## API
 
 ### Webhook — Receber pedido
