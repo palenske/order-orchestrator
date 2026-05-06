@@ -13,6 +13,10 @@ export class PrismaService
 {
   private readonly logger = new Logger(PrismaService.name);
 
+  constructor() {
+    super();
+  }
+
   async onModuleInit() {
     this.logger.log('Connecting to database...');
     await this.$connect();

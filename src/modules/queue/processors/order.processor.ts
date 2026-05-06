@@ -1,4 +1,4 @@
-import { Processor } from '@nestjs/bullmq';
+import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { OrderRepository } from '../../order/repositories/order.repository';
@@ -10,13 +10,19 @@ export interface OrderJobData {
 }
 
 @Processor('orders')
-export class OrderProcessor {
+export class OrderProcessor extends WorkerHost {
   private readonly logger = new Logger(OrderProcessor.name);
 
   constructor(
     private readonly orderRepository: OrderRepository,
     private readonly enrichmentService: EnrichmentService,
-  ) {}
+  ) {
+    super();
+  }
+
+  async process(job: Job<OrderJobData>) {
+    return this.handleEnrichOrder(job);
+  }
 
   async handleEnrichOrder(job: Job<OrderJobData>) {
     const { orderId } = job.data;
