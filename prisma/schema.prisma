@@ -43,7 +43,6 @@ model Order {
   processedAt    DateTime?
 
   items          OrderItem[]
-  events         OrderEvent[]
 }
 
 model OrderItem {
@@ -53,24 +52,4 @@ model OrderItem {
   unitPrice  Float
   orderId    String
   order      Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-}
-
-enum EventType {
-  RECEIVED
-  ENQUEUE
-  PROCESSING
-  ENRICHED
-  RETRY
-  FAILED
-}
-
-model OrderEvent {
-  id        String    @id @default(uuid())
-  type     EventType
-  details  Json?
-  error    String?
-  retryAt  DateTime?
-  orderId  String
-  order    Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  createdAt DateTime  @default(now())
 }

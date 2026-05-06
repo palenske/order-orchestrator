@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
-import type { Prisma, Order, OrderEvent } from '@prisma/client';
-import { OrderStatus, EventType } from '@prisma/client';
+import type { Prisma, Order } from '@prisma/client';
+import { OrderStatus } from '@prisma/client';
 
 type JsonValue = Prisma.InputJsonValue;
 
@@ -15,7 +15,6 @@ export class OrderRepository {
       include: {
         customer: true,
         items: true,
-        events: { orderBy: { createdAt: 'desc' } },
       },
     });
   }
@@ -26,7 +25,6 @@ export class OrderRepository {
       include: {
         customer: true,
         items: true,
-        events: { orderBy: { createdAt: 'desc' } },
       },
     });
   }
@@ -79,17 +77,10 @@ export class OrderRepository {
         items: {
           create: items,
         },
-        events: {
-          create: {
-            type: EventType.RECEIVED,
-            details: { message: 'Order received via webhook' },
-          },
-        },
       },
       include: {
         customer: true,
         items: true,
-        events: true,
       },
     });
   }
@@ -114,24 +105,6 @@ export class OrderRepository {
       include: {
         customer: true,
         items: true,
-      },
-    });
-  }
-
-  async addEvent(
-    orderId: string,
-    type: EventType,
-    details?: JsonValue,
-    error?: string,
-    retryAt?: Date,
-  ): Promise<OrderEvent> {
-    return this.prisma.orderEvent.create({
-      data: {
-        type,
-        details,
-        error,
-        retryAt,
-        orderId,
       },
     });
   }
