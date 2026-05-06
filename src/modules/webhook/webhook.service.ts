@@ -1,13 +1,8 @@
-import {
-  Injectable,
-  Logger,
-  ConflictException,
-  BadRequestException,
-} from '@nestjs/common';
+import { Injectable, Logger, ConflictException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { OrderRepository } from '../order/repositories/order.repository';
-import type { CreateOrderWebhookDto } from './dto/create-order-webhook.dto';
+import { CreateOrderWebhookDto } from './dto/create-order-webhook.dto';
 import type { Order } from '@prisma/client';
 
 @Injectable()
@@ -21,7 +16,6 @@ export class WebhookService {
 
   async receiveOrderWebhook(dto: CreateOrderWebhookDto) {
     this.logger.log(`Webhook: ${dto.order_id}`);
-    this.validatePayload(dto);
 
     const existingOrder = await this.orderRepository.findByIdempotencyKey(
       dto.idempotency_key,
@@ -74,34 +68,5 @@ export class WebhookService {
       idempotency_key: order.idempotencyKey,
       status: order.status,
     };
-  }
-
-  private validatePayload(dto: CreateOrderWebhookDto) {
-    if (!dto.order_id || typeof dto.order_id !== 'string') {
-      throw new BadRequestException('Invalid order_id');
-    }
-    if (!dto.idempotency_key || typeof dto.idempotency_key !== 'string') {
-      throw new BadRequestException('Invalid idempotency_key');
-    }
-    if (!dto.currency || typeof dto.currency !== 'string') {
-      throw new BadRequestException('Invalid currency');
-    }
-    if (!dto.customer || !dto.customer.email || !dto.customer.name) {
-      throw new BadRequestException('Invalid customer');
-    }
-    if (!dto.items || !Array.isArray(dto.items) || dto.items.length === 0) {
-      throw new BadRequestException('Invalid items');
-    }
-    for (const item of dto.items) {
-      if (!item.sku || typeof item.sku !== 'string') {
-        throw new BadRequestException('Invalid item sku');
-      }
-      if (!item.qty || typeof item.qty !== 'number' || item.qty < 1) {
-        throw new BadRequestException('Invalid item qty');
-      }
-      if (typeof item.unit_price !== 'number' || item.unit_price <= 0) {
-        throw new BadRequestException('Invalid item unit_price');
-      }
-    }
   }
 }

@@ -29,7 +29,6 @@ describe('OrderRepository', () => {
         findMany: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
-        count: jest.fn(),
       },
       customer: {
         create: jest.fn(),
@@ -125,14 +124,6 @@ describe('OrderRepository', () => {
         OrderStatus.ENRICHED,
       );
       expect(result.status).toBe(OrderStatus.ENRICHED);
-    });
-  });
-
-  describe('count', () => {
-    it('should return count of orders', async () => {
-      (prisma.order.count as jest.Mock).mockResolvedValue(5);
-      const result = await repository.count();
-      expect(result).toBe(5);
     });
   });
 });

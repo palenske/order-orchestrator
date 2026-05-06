@@ -1,55 +1,60 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { Order } from '@prisma/client';
+import type { OrderWithRelations } from '../../order/repositories/order.repository';
+
+export interface ExchangeRateResult {
+  base: string;
+  target: string;
+  rate: number;
+}
+
+export interface IpInfoResult {
+  ip: string;
+  country: string;
+  city: string;
+  isp: string;
+}
+
+export interface CepInfoResult {
+  cep: string;
+  street: string;
+  neighborhood: string;
+  city: string;
+  state: string;
+}
+
+export interface ProductsInfoResult {
+  validated: boolean;
+  products: Array<{
+    sku: string;
+    name: string;
+    price: number;
+    found: boolean;
+  }>;
+}
 
 export interface EnrichedData {
   exchangeRate: number;
   convertedTotal: number;
+  originalTotal: number;
   rateSource: string;
   timestamp: string;
-  exchangeRateApi?: {
-    base: string;
-    target: string;
-    rate: number;
-  };
-  ipInfo?:
-    | {
-        ip: string;
-        country: string;
-        city: string;
-        isp: string;
-      }
-    | undefined;
-  cepInfo?:
-    | {
-        cep: string;
-        street: string;
-        neighborhood: string;
-        city: string;
-        state: string;
-      }
-    | undefined;
-  productsInfo?:
-    | {
-        validated: boolean;
-        products: Array<{
-          sku: string;
-          name: string;
-          price: number;
-          found: boolean;
-        }>;
-      }
-    | undefined;
+  exchangeRateApi: ExchangeRateResult;
+  ipInfo?: IpInfoResult;
+  cepInfo?: CepInfoResult;
+  productsInfo?: ProductsInfoResult;
 }
+
+const FETCH_TIMEOUT_MS = 10_000;
 
 @Injectable()
 export class EnrichmentService {
   private readonly logger = new Logger(EnrichmentService.name);
   private readonly targetCurrency = 'USD';
 
-  async enrich(order: Order): Promise<EnrichedData> {
+  async enrich(order: OrderWithRelations): Promise<EnrichedData> {
     this.logger.log(`Enriching order: ${order.id}`);
 
-    const items = (order as any).items || [];
+    const items = order.items;
 
     const exchangeResult = await this.getExchangeRateApi(
       order.currency,
@@ -57,12 +62,12 @@ export class EnrichmentService {
     );
     const rate = exchangeResult.rate;
 
-    const totalAmount = items.reduce(
-      (sum: number, item: any) => sum + item.quantity * item.unitPrice,
+    const originalTotal = items.reduce(
+      (sum, item) => sum + item.quantity * item.unitPrice,
       0,
     );
 
-    const convertedTotal = totalAmount * rate;
+    const convertedTotal = originalTotal * rate;
 
     const ipInfo = await this.getIpInfo().catch((error) => {
       this.logger.warn(
@@ -77,12 +82,13 @@ export class EnrichmentService {
         'Product validation enrichment failed, continuing without it',
         error,
       );
-      return { validated: false, products: [] };
+      return undefined;
     });
 
     return {
       exchangeRate: rate,
       convertedTotal: Math.round(convertedTotal * 100) / 100,
+      originalTotal,
       rateSource: 'ExchangeRate-API',
       timestamp: new Date().toISOString(),
       exchangeRateApi: exchangeResult,
@@ -91,11 +97,42 @@ export class EnrichmentService {
     };
   }
 
+  async enrichWithCep(
+    order: OrderWithRelations,
+    cep: string,
+  ): Promise<EnrichedData> {
+    const baseData = await this.enrich(order);
+
+    const cepInfo = await this.getCepInfo(cep).catch((error) => {
+      this.logger.error(`Failed to get CEP info: ${cep}`, error);
+      return undefined;
+    });
+
+    if (cepInfo) {
+      return { ...baseData, cepInfo };
+    }
+
+    return baseData;
+  }
+
+  private async fetchWithTimeout(
+    url: string,
+    timeoutMs: number = FETCH_TIMEOUT_MS,
+  ): Promise<Response> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, { signal: controller.signal });
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   private async getExchangeRateApi(
     from: string,
     to: string,
-  ): Promise<{ base: string; target: string; rate: number }> {
-    const response = await fetch(
+  ): Promise<ExchangeRateResult> {
+    const response = await this.fetchWithTimeout(
       `https://api.exchangerate-api.com/v4/latest/${from}`,
     );
 
@@ -122,40 +159,8 @@ export class EnrichmentService {
     };
   }
 
-  async enrichWithCep(order: Order, cep: string): Promise<EnrichedData> {
-    const baseData = await this.enrich(order);
-
-    try {
-      const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
-      const data = (await response.json()) as {
-        cep?: string;
-        logradouro?: string;
-        bairro?: string;
-        local?: string;
-        uf?: string;
-      };
-
-      if (data.cep) {
-        return {
-          ...baseData,
-          cepInfo: {
-            cep: data.cep,
-            street: data.logradouro ?? '',
-            neighborhood: data.bairro ?? '',
-            city: data.local ?? '',
-            state: data.uf ?? '',
-          },
-        };
-      }
-    } catch (error) {
-      this.logger.error(`Failed to get CEP info: ${cep}`, error);
-    }
-
-    return baseData;
-  }
-
-  private async getIpInfo(): Promise<EnrichedData['ipInfo']> {
-    const response = await fetch(
+  private async getIpInfo(): Promise<IpInfoResult> {
+    const response = await this.fetchWithTimeout(
       'http://ip-api.com/json/?fields=status,country,city,isp,query',
     );
 
@@ -166,7 +171,9 @@ export class EnrichmentService {
       city?: string;
       isp?: string;
     };
-    if (data.status === 'fail') return undefined;
+    if (data.status === 'fail') {
+      throw new Error('IP info API returned fail status');
+    }
     return {
       ip: data.query ?? '',
       country: data.country ?? '',
@@ -175,10 +182,48 @@ export class EnrichmentService {
     };
   }
 
+  private async getCepInfo(cep: string): Promise<CepInfoResult> {
+    const response = await this.fetchWithTimeout(
+      `https://viacep.com.br/ws/${cep}/json/`,
+    );
+
+    if (!response.ok) {
+      throw new Error(`CEP API returned status ${response.status}`);
+    }
+
+    const data = (await response.json()) as {
+      cep?: string;
+      logradouro?: string;
+      bairro?: string;
+      localidade?: string;
+      uf?: string;
+      erro?: boolean;
+    };
+
+    if (data.erro || !data.cep) {
+      throw new Error(`CEP not found: ${cep}`);
+    }
+
+    return {
+      cep: data.cep,
+      street: data.logradouro ?? '',
+      neighborhood: data.bairro ?? '',
+      city: data.localidade ?? '',
+      state: data.uf ?? '',
+    };
+  }
+
   private async validateProducts(
-    items: any[],
-  ): Promise<EnrichedData['productsInfo']> {
-    const response = await fetch('https://fakestoreapi.com/products');
+    items: OrderWithRelations['items'],
+  ): Promise<ProductsInfoResult> {
+    const response = await this.fetchWithTimeout(
+      'https://fakestoreapi.com/products',
+    );
+
+    if (!response.ok) {
+      throw new Error(`Products API returned status ${response.status}`);
+    }
+
     const products = (await response.json()) as Array<{
       title: string;
       price: number;

@@ -1,4 +1,11 @@
-import { Controller, Get, Post, Param, Query, Inject } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Param,
+  Query,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { OrderRepository } from '../order/repositories/order.repository';
@@ -19,13 +26,22 @@ export class FailureController {
 
   @Post(':id/resolve')
   async resolveFailure(@Param('id') id: string) {
+    const failure = await this.orderRepository.findFailureById(id);
+    if (!failure) {
+      throw new NotFoundException('Failure not found');
+    }
     await this.orderRepository.resolveFailure(id);
     return { success: true };
   }
 
   @Post(':id/reprocess')
   async reprocessFailure(@Param('id') id: string) {
-    const orderId = id;
+    const failure = await this.orderRepository.findFailureById(id);
+    if (!failure) {
+      throw new NotFoundException('Failure not found');
+    }
+
+    const orderId = failure.orderId;
     await this.orderRepository.updateStatus(orderId, OrderStatus.RECEIVED);
     await this.ordersQueue.add(
       'enrich-order',
@@ -35,6 +51,7 @@ export class FailureController {
         backoff: { type: 'exponential', delay: 1000 },
       },
     );
+    await this.orderRepository.resolveFailure(id);
     return { success: true, message: `Order ${orderId} re-enqueued` };
   }
 }

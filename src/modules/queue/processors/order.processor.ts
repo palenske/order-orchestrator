@@ -4,6 +4,9 @@ import { Job, Queue } from 'bullmq';
 import { OrderRepository } from '../../order/repositories/order.repository';
 import { EnrichmentService } from '../services/enrichment.service';
 import { OrderStatus } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
+
+type JsonValue = Prisma.InputJsonValue;
 
 export interface OrderJobData {
   orderId: string;
@@ -38,20 +41,16 @@ export class OrderProcessor extends WorkerHost {
 
     const enrichedData = await this.enrichmentService.enrich(order);
 
-    const items = (order as any).items ?? [];
-    const totalAmount = items.reduce(
-      (sum: number, item: any) => sum + item.quantity * item.unitPrice,
-      0,
-    );
-
     await this.orderRepository.updateStatus(orderId, OrderStatus.ENRICHED, {
-      totalAmount,
+      totalAmount: enrichedData.convertedTotal,
       conversionRate: enrichedData.exchangeRate,
-      enrichedData: enrichedData as any,
+      enrichedData: enrichedData as unknown as JsonValue,
       processedAt: new Date(),
     });
 
-    this.logger.log(`Order enriched: ${orderId}`);
+    await this.orderRepository.updateStatus(orderId, OrderStatus.COMPLETED);
+
+    this.logger.log(`Order completed: ${orderId}`);
     return { orderId, enrichedData };
   }
 

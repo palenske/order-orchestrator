@@ -44,12 +44,17 @@ describe('OrderController', () => {
     it('should return all orders without filter', async () => {
       const result = await controller.getOrders();
       expect(result).toEqual(mockOrders);
-      expect(service.getOrders).toHaveBeenCalledWith(undefined);
+      expect(service.getOrders).toHaveBeenCalledWith(undefined, 0, 50);
     });
 
     it('should return orders filtered by status', async () => {
       await controller.getOrders('RECEIVED');
-      expect(service.getOrders).toHaveBeenCalledWith('RECEIVED');
+      expect(service.getOrders).toHaveBeenCalledWith('RECEIVED', 0, 50);
+    });
+
+    it('should pass pagination parameters', async () => {
+      await controller.getOrders(undefined, '2', '10');
+      expect(service.getOrders).toHaveBeenCalledWith(undefined, 10, 10);
     });
   });
 

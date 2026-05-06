@@ -8,8 +8,12 @@ export class OrderService {
 
   constructor(private readonly orderRepository: OrderRepository) {}
 
-  async getOrders(status?: OrderStatus): Promise<Order[]> {
-    const orders = await this.orderRepository.findAll({ status });
+  async getOrders(
+    status?: OrderStatus,
+    skip?: number,
+    take?: number,
+  ): Promise<Order[]> {
+    const orders = await this.orderRepository.findAll({ status, skip, take });
     this.logger.log(`Orders: ${orders.length}`);
     return orders;
   }

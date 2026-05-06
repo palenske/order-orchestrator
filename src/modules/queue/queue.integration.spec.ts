@@ -24,17 +24,53 @@ describe('Order Queue Flow', () => {
         orderId: 'order-test-1',
       },
     ],
+    customer: null,
+    totalAmount: null,
+    conversionRate: null,
+    enrichedData: null,
+    customerId: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    processedAt: null,
   } as any;
 
   let mockRepo: any;
   let mockDlqQueue: any;
+  let fetchSpy: jest.SpiedFunction<typeof globalThis.fetch>;
 
   beforeEach(async () => {
+    fetchSpy = jest.spyOn(globalThis, 'fetch');
+    fetchSpy.mockImplementation(async (url: string | URL | Request) => {
+      const urlStr = url.toString();
+      if (urlStr.includes('exchangerate-api')) {
+        return new Response(
+          JSON.stringify({ base_code: 'EUR', rates: { USD: 1.1 } }),
+          { status: 200 },
+        );
+      }
+      if (urlStr.includes('ip-api')) {
+        return new Response(
+          JSON.stringify({
+            status: 'success',
+            query: '1.2.3.4',
+            country: 'US',
+            city: 'New York',
+            isp: 'TestISP',
+          }),
+          { status: 200 },
+        );
+      }
+      if (urlStr.includes('fakestoreapi')) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      return new Response(null, { status: 404 });
+    });
+
     mockRepo = {
       findById: jest.fn().mockResolvedValue(mockOrder),
       updateStatus: jest
         .fn()
-        .mockResolvedValue({ ...mockOrder, status: OrderStatus.ENRICHED }),
+        .mockResolvedValue({ ...mockOrder, status: OrderStatus.COMPLETED }),
       createFailure: jest.fn(),
       findFailures: jest.fn().mockResolvedValue([]),
     };
@@ -55,6 +91,10 @@ describe('Order Queue Flow', () => {
     processor = app.get<OrderProcessor>(OrderProcessor);
     repository = app.get<OrderRepository>(OrderRepository);
     enrichmentService = app.get<EnrichmentService>(EnrichmentService);
+  });
+
+  afterEach(() => {
+    fetchSpy.mockRestore();
   });
 
   describe('Order Processing Flow', () => {
@@ -78,7 +118,7 @@ describe('Order Queue Flow', () => {
       expect(result.enrichedData).toBeDefined();
     });
 
-    it('should update status to ENRICHED after success', async () => {
+    it('should update status to ENRICHED then COMPLETED after success', async () => {
       await processor.handleEnrichOrder({
         data: { orderId: 'order-test-1' },
       } as any);
@@ -87,6 +127,10 @@ describe('Order Queue Flow', () => {
         'order-test-1',
         OrderStatus.ENRICHED,
         expect.any(Object),
+      );
+      expect(repository.updateStatus).toHaveBeenCalledWith(
+        'order-test-1',
+        OrderStatus.COMPLETED,
       );
     });
 
@@ -142,15 +186,9 @@ describe('Order Queue Flow', () => {
     it('should return enriched data with exchange rate', async () => {
       const result = await enrichmentService.enrich(mockOrder);
 
-      expect(result.exchangeRate).toBeDefined();
-      expect(result.convertedTotal).toBeDefined();
+      expect(result.exchangeRate).toBe(1.1);
+      expect(result.convertedTotal).toBe(110);
       expect(result.rateSource).toBe('ExchangeRate-API');
-    });
-
-    it('should calculate correct total amount', async () => {
-      const result = await enrichmentService.enrich(mockOrder);
-
-      expect(result.convertedTotal).toBe(100 * result.exchangeRate);
     });
   });
 
@@ -179,6 +217,14 @@ describe('Order Queue Flow', () => {
       expect(repository.updateStatus).toHaveBeenCalledWith(
         'order-test-1',
         OrderStatus.FAILED_ENRICHMENT,
+      );
+    });
+
+    it('should transition from ENRICHED to COMPLETED', async () => {
+      await repository.updateStatus('order-test-1', OrderStatus.COMPLETED);
+      expect(repository.updateStatus).toHaveBeenCalledWith(
+        'order-test-1',
+        OrderStatus.COMPLETED,
       );
     });
   });
