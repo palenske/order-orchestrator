@@ -115,4 +115,38 @@ export class OrderRepository {
       where: status ? { status } : undefined,
     });
   }
+
+  async createFailure(orderId: string, error: string): Promise<any> {
+    return this.prisma.orderFailure.create({
+      data: {
+        orderId,
+        error,
+        attempts: 1,
+      },
+    });
+  }
+
+  async incrementFailureAttempts(id: string): Promise<any> {
+    return this.prisma.orderFailure.update({
+      where: { id },
+      data: {
+        attempts: { increment: 1 },
+        lastAttempt: new Date(),
+      },
+    });
+  }
+
+  async findFailures(unresolved?: boolean): Promise<any[]> {
+    return this.prisma.orderFailure.findMany({
+      where: unresolved !== undefined ? { resolved: !unresolved } : undefined,
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async resolveFailure(id: string): Promise<any> {
+    return this.prisma.orderFailure.update({
+      where: { id },
+      data: { resolved: true, resolvedAt: new Date() },
+    });
+  }
 }

@@ -53,3 +53,16 @@ model OrderItem {
   orderId    String
   order      Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
 }
+
+model OrderFailure {
+  id          String   @id @default(uuid())
+  orderId     String
+  error      String
+  attempts   Int      @default(0)
+  lastAttempt DateTime @default(now())
+  resolved   Boolean  @default(false)
+  resolvedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  @@index([orderId])
+}
