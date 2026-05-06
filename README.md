@@ -2,6 +2,8 @@
 
 API de processamento assíncrono de pedidos com enriquecimento via serviços externos, filas com retry e DLQ.
 
+**URL de produção:** https://order-orchestrator.up.railway.app
+
 ## Setup
 
 ```bash
