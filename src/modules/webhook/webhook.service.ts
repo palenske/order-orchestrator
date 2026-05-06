@@ -15,11 +15,11 @@ export class WebhookService {
   ) {}
 
   async receiveOrderWebhook(dto: CreateOrderWebhookDto) {
+    this.logger.log(`Webhook: ${dto.order_id}`);
     this.validatePayload(dto);
 
     const existingOrder = await this.orderRepository.findByIdempotencyKey(dto.idempotency_key);
     if (existingOrder) {
-      this.logger.warn(`Duplicate order with idempotency_key: ${dto.idempotency_key}`);
       throw new ConflictException('Order already processed');
     }
 
@@ -37,17 +37,12 @@ export class WebhookService {
       })),
     });
 
-    this.logger.log(`Order created: ${order.id}`);
-
     await this.ordersQueue.add('enrich-order', { orderId: order.id }, {
       attempts: 3,
-      backoff: {
-        type: 'exponential',
-        delay: 1000,
-      },
+      backoff: { type: 'exponential', delay: 1000 },
     });
 
-    this.logger.log(`Order enqueued for enrichment: ${order.id}`);
+    this.logger.log(`Order enqueued: ${order.id}`);
 
     return {
       success: true,

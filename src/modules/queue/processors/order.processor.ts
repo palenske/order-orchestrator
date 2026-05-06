@@ -52,9 +52,7 @@ export class OrderProcessor {
 
   async onFailed(job: Job, error: Error) {
     const { orderId } = job.data as OrderJobData;
-    this.logger.error(`Job failed for order: ${orderId}, moving to DLQ`);
-
-    const existingFailure = await this.orderRepository.findFailures(false);
+    this.logger.error(`Order failed: ${orderId}`);
 
     await this.orderRepository.createFailure(orderId, error.message);
     await this.orderRepository.updateStatus(orderId, OrderStatus.FAILED_ENRICHMENT);
