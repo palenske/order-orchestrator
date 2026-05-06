@@ -31,7 +31,7 @@ describe('EnrichmentService', () => {
       expect(result).toBeDefined();
       expect(result.exchangeRate).toBeDefined();
       expect(result.convertedTotal).toBeDefined();
-      expect(result.rateSource).toBe('frankfurter.app');
+      expect(result.rateSource).toBe('ExchangeRate-API');
       expect(result.timestamp).toBeDefined();
     });
 

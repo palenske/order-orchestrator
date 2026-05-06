@@ -6,11 +6,27 @@ export interface EnrichedData {
   convertedTotal: number;
   rateSource: string;
   timestamp: string;
+  exchangeRateApi?: {
+    base: string;
+    target: string;
+    rate: number;
+  };
   ipInfo?: {
     ip: string;
     country: string;
     city: string;
     isp: string;
+  } | undefined;
+  cepInfo?: {
+    cep: string;
+    street: string;
+    neighborhood: string;
+    city: string;
+    state: string;
+  } | undefined;
+  productsInfo?: {
+    validated: boolean;
+    products: Array<{ sku: string; name: string; price: number; found: boolean }>;
   } | undefined;
 }
 
@@ -22,36 +38,80 @@ export class EnrichmentService {
   async enrich(order: Order): Promise<EnrichedData> {
     this.logger.log(`Enriching order: ${order.id}`);
 
-    const exchangeRate = await this.getExchangeRate(order.currency, this.targetCurrency);
-
     const items = (order as any).items || [];
+
+    const exchangeResult = await this.getExchangeRateApi(order.currency, this.targetCurrency);
+    const rate = exchangeResult?.rate ?? 1;
+
     const totalAmount = items.reduce(
       (sum: number, item: any) => sum + item.quantity * item.unitPrice,
       0,
     );
 
-    const convertedTotal = totalAmount * exchangeRate;
+    const convertedTotal = totalAmount * rate;
 
     const ipInfo = await this.getIpInfo();
+    const productsInfo = await this.validateProducts(items);
 
     return {
-      exchangeRate,
+      exchangeRate: rate,
       convertedTotal: Math.round(convertedTotal * 100) / 100,
-      rateSource: 'frankfurter.app',
+      rateSource: 'ExchangeRate-API',
       timestamp: new Date().toISOString(),
+      exchangeRateApi: exchangeResult,
       ipInfo,
+      productsInfo,
     };
   }
 
-  private async getExchangeRate(from: string, to: string): Promise<number> {
+  private async getExchangeRateApi(from: string, to: string): Promise<EnrichedData['exchangeRateApi']> {
     try {
-      const response = await fetch(`https://api.frankfurter.app/latest?from=${from}&to=${to}`);
-      const data = await response.json() as { rates: Record<string, number> };
-      return data.rates[to];
+      const response = await fetch(`https://api.exchangerate-api.com/v4/latest/${from}`);
+      const data = await response.json() as {
+        base_code: string;
+        rates: Record<string, number>;
+      };
+      return {
+        base: data.base_code,
+        target: to,
+        rate: data.rates[to] || 1,
+      };
     } catch (error) {
       this.logger.error(`Failed to get exchange rate: ${from} -> ${to}`, error);
-      return 1;
+      return { base: from, target: to, rate: 1 };
     }
+  }
+
+  async enrichWithCep(order: Order, cep: string): Promise<EnrichedData> {
+    const baseData = await this.enrich(order);
+
+    try {
+      const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+      const data = await response.json() as {
+        cep?: string;
+        logradouro?: string;
+        bairro?: string;
+        local?: string;
+        uf?: string;
+      };
+
+      if (data.cep) {
+        return {
+          ...baseData,
+          cepInfo: {
+            cep: data.cep,
+            street: data.logradouro ?? '',
+            neighborhood: data.bairro ?? '',
+            city: data.local ?? '',
+            state: data.uf ?? '',
+          },
+        };
+      }
+    } catch (error) {
+      this.logger.error(`Failed to get CEP info: ${cep}`, error);
+    }
+
+    return baseData;
   }
 
   private async getIpInfo(): Promise<EnrichedData['ipInfo']> {
@@ -68,6 +128,28 @@ export class EnrichmentService {
     } catch (error) {
       this.logger.error('Failed to get IP info', error);
       return undefined;
+    }
+  }
+
+  private async validateProducts(items: any[]): Promise<EnrichedData['productsInfo']> {
+    try {
+      const response = await fetch('https://fakestoreapi.com/products');
+      const products = await response.json() as Array<{ title: string; price: number }>;
+
+      const validated = items.map((item) => {
+        const product = products.find((p) => p.price === item.unitPrice);
+        return {
+          sku: item.sku,
+          name: product?.title ?? 'Unknown',
+          price: item.unitPrice,
+          found: !!product,
+        };
+      });
+
+      return { validated: true, products: validated };
+    } catch (error) {
+      this.logger.error('Failed to validate products', error);
+      return { validated: false, products: [] };
     }
   }
 }
