@@ -3,6 +3,7 @@ import { WebhookController } from './webhook.controller';
 import { WebhookService } from './webhook.service';
 import { OrderRepository } from '../order/repositories/order.repository';
 import { ConflictException } from '@nestjs/common';
+import { Queue } from 'bullmq';
 
 describe('WebhookController', () => {
   let controller: WebhookController;
@@ -25,8 +26,8 @@ describe('WebhookController', () => {
     currency: 'USD',
   };
 
-  let app: TestingModule;
   let mockRepo: any;
+  let mockQueue: any;
 
   beforeEach(async () => {
     mockRepo = {
@@ -34,11 +35,16 @@ describe('WebhookController', () => {
       create: jest.fn(),
     };
 
-    app = await Test.createTestingModule({
+    mockQueue = {
+      add: jest.fn().mockResolvedValue({}),
+    };
+
+    const app: TestingModule = await Test.createTestingModule({
       controllers: [WebhookController],
       providers: [
         WebhookService,
         { provide: OrderRepository, useValue: mockRepo },
+        { provide: 'BullQueue_orders', useValue: mockQueue },
       ],
     }).compile();
 
@@ -67,9 +73,7 @@ describe('WebhookController', () => {
     it('should throw ConflictException for duplicate idempotency_key', async () => {
       mockRepo.findByIdempotencyKey.mockResolvedValue({ id: 'existing' });
 
-      await expect(service.receiveOrderWebhook(mockDto)).rejects.toThrow(
-        ConflictException,
-      );
+      await expect(service.receiveOrderWebhook(mockDto)).rejects.toThrow(ConflictException);
     });
 
     it('should throw BadRequestException for invalid payload - missing order_id', async () => {

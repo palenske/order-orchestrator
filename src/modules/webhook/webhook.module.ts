@@ -4,7 +4,6 @@ import { WebhookService } from './webhook.service';
 import { OrderRepository } from '../order/repositories/order.repository';
 
 @Module({
-  imports: [],
   controllers: [WebhookController],
   providers: [WebhookService, OrderRepository],
 })

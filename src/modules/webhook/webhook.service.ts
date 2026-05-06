@@ -1,4 +1,6 @@
 import { Injectable, Logger, ConflictException, BadRequestException } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { OrderRepository } from '../order/repositories/order.repository';
 import type { CreateOrderWebhookDto } from './dto/create-order-webhook.dto';
 import { OrderStatus } from '@prisma/client';
@@ -7,7 +9,10 @@ import { OrderStatus } from '@prisma/client';
 export class WebhookService {
   private readonly logger = new Logger(WebhookService.name);
 
-  constructor(private readonly orderRepository: OrderRepository) {}
+  constructor(
+    private readonly orderRepository: OrderRepository,
+    @InjectQueue('orders') private readonly ordersQueue: Queue,
+  ) {}
 
   async receiveOrderWebhook(dto: CreateOrderWebhookDto) {
     this.validatePayload(dto);
@@ -33,6 +38,16 @@ export class WebhookService {
     });
 
     this.logger.log(`Order created: ${order.id}`);
+
+    await this.ordersQueue.add('enrich-order', { orderId: order.id }, {
+      attempts: 3,
+      backoff: {
+        type: 'exponential',
+        delay: 1000,
+      },
+    });
+
+    this.logger.log(`Order enqueued for enrichment: ${order.id}`);
 
     return {
       success: true,
