@@ -8,7 +8,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { OrderRepository } from '../order/repositories/order.repository';
 import type { CreateOrderWebhookDto } from './dto/create-order-webhook.dto';
-import { OrderStatus } from '@prisma/client';
+import type { Order } from '@prisma/client';
 
 @Injectable()
 export class WebhookService {
@@ -30,19 +30,32 @@ export class WebhookService {
       throw new ConflictException('Order already processed');
     }
 
-    const order = await this.orderRepository.create({
-      externalId: dto.order_id,
-      idempotencyKey: dto.idempotency_key,
-      currency: dto.currency,
-      customer: dto.customer
-        ? { email: dto.customer.email, name: dto.customer.name }
-        : undefined,
-      items: dto.items.map((item) => ({
-        sku: item.sku,
-        quantity: item.qty,
-        unitPrice: item.unit_price,
-      })),
-    });
+    let order: Order;
+    try {
+      order = await this.orderRepository.create({
+        externalId: dto.order_id,
+        idempotencyKey: dto.idempotency_key,
+        currency: dto.currency,
+        customer: dto.customer
+          ? { email: dto.customer.email, name: dto.customer.name }
+          : undefined,
+        items: dto.items.map((item) => ({
+          sku: item.sku,
+          quantity: item.qty,
+          unitPrice: item.unit_price,
+        })),
+      });
+    } catch (error: unknown) {
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        (error as { code: string }).code === 'P2002'
+      ) {
+        throw new ConflictException('Order already processed');
+      }
+      throw error;
+    }
 
     await this.ordersQueue.add(
       'enrich-order',

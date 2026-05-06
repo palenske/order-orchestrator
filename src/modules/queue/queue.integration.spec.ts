@@ -26,8 +26,11 @@ describe('Order Queue Flow', () => {
     ],
   } as any;
 
+  let mockRepo: any;
+  let mockDlqQueue: any;
+
   beforeEach(async () => {
-    const mockRepo = {
+    mockRepo = {
       findById: jest.fn().mockResolvedValue(mockOrder),
       updateStatus: jest
         .fn()
@@ -36,11 +39,16 @@ describe('Order Queue Flow', () => {
       findFailures: jest.fn().mockResolvedValue([]),
     };
 
+    mockDlqQueue = {
+      add: jest.fn().mockResolvedValue({}),
+    };
+
     const app: TestingModule = await Test.createTestingModule({
       providers: [
         OrderProcessor,
         EnrichmentService,
         { provide: OrderRepository, useValue: mockRepo },
+        { provide: 'BullQueue_orders-dlq', useValue: mockDlqQueue },
       ],
     }).compile();
 
@@ -90,16 +98,43 @@ describe('Order Queue Flow', () => {
       ).rejects.toThrow('Order not found');
     });
 
-    it('should handle onFailed and update to FAILED_ENRICHMENT', async () => {
+    it('should handle onFailed and update to FAILED_ENRICHMENT when all retries exhausted', async () => {
       await processor.onFailed(
-        { data: { orderId: 'order-test-1' } } as any,
+        {
+          data: { orderId: 'order-test-1' },
+          opts: { attempts: 3 },
+          attemptsMade: 3,
+        } as any,
         new Error('Test error'),
       );
 
+      expect(mockDlqQueue.add).toHaveBeenCalledWith('dead-letter', {
+        orderId: 'order-test-1',
+        error: 'Test error',
+        originalJobId: undefined,
+        failedAt: expect.any(String),
+      });
       expect(repository.updateStatus).toHaveBeenCalledWith(
         'order-test-1',
         OrderStatus.FAILED_ENRICHMENT,
       );
+    });
+
+    it('should not update status when retries are still available', async () => {
+      jest.clearAllMocks();
+
+      await processor.onFailed(
+        {
+          data: { orderId: 'order-test-1' },
+          opts: { attempts: 3 },
+          attemptsMade: 1,
+        } as any,
+        new Error('Temporary error'),
+      );
+
+      expect(repository.updateStatus).not.toHaveBeenCalled();
+      expect(repository.createFailure).not.toHaveBeenCalled();
+      expect(mockDlqQueue.add).not.toHaveBeenCalled();
     });
   });
 

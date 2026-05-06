@@ -8,13 +8,7 @@ import { OrderModule } from '../order/order.module';
 
 @Module({
   imports: [
-    BullModule.forRoot({
-      connection: {
-        host: process.env.REDIS_HOST || 'localhost',
-        port: parseInt(process.env.REDIS_PORT || '6379'),
-      },
-    }),
-    BullModule.registerQueue({ name: 'orders' }),
+    BullModule.registerQueue({ name: 'orders' }, { name: 'orders-dlq' }),
     OrderModule,
   ],
   controllers: [FailureController, QueueController],

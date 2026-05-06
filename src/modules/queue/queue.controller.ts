@@ -4,7 +4,10 @@ import { Queue } from 'bullmq';
 
 @Controller('queue')
 export class QueueController {
-  constructor(@InjectQueue('orders') private readonly ordersQueue: Queue) {}
+  constructor(
+    @InjectQueue('orders') private readonly ordersQueue: Queue,
+    @InjectQueue('orders-dlq') private readonly dlqQueue: Queue,
+  ) {}
 
   @Get('metrics')
   async getMetrics() {
@@ -18,6 +21,8 @@ export class QueueController {
         this.ordersQueue.isPaused(),
       ]);
 
+    const dlqCount = await this.dlqQueue.count();
+
     return {
       queueName: 'orders',
       waiting,
@@ -26,6 +31,10 @@ export class QueueController {
       failed,
       delayed,
       paused,
+      dlq: {
+        queueName: 'orders-dlq',
+        count: dlqCount,
+      },
       health: failed > 0 ? 'unhealthy' : 'healthy',
     };
   }

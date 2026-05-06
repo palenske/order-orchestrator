@@ -87,5 +87,17 @@ describe('WebhookController', () => {
       const invalidDto = { ...mockDto, items: [] };
       await expect(service.receiveOrderWebhook(invalidDto)).rejects.toThrow();
     });
+
+    it('should throw ConflictException on unique constraint violation (P2002)', async () => {
+      mockRepo.findByIdempotencyKey.mockResolvedValue(null);
+      mockRepo.create.mockRejectedValue({
+        code: 'P2002',
+        meta: { target: ['idempotencyKey'] },
+      });
+
+      await expect(service.receiveOrderWebhook(mockDto)).rejects.toThrow(
+        ConflictException,
+      );
+    });
   });
 });

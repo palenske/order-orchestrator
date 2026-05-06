@@ -1,6 +1,6 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Processor, WorkerHost, InjectQueue } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
-import { Job } from 'bullmq';
+import { Job, Queue } from 'bullmq';
 import { OrderRepository } from '../../order/repositories/order.repository';
 import { EnrichmentService } from '../services/enrichment.service';
 import { OrderStatus } from '@prisma/client';
@@ -16,6 +16,7 @@ export class OrderProcessor extends WorkerHost {
   constructor(
     private readonly orderRepository: OrderRepository,
     private readonly enrichmentService: EnrichmentService,
+    @InjectQueue('orders-dlq') private readonly dlqQueue: Queue,
   ) {
     super();
   }
@@ -37,13 +38,15 @@ export class OrderProcessor extends WorkerHost {
 
     const enrichedData = await this.enrichmentService.enrich(order);
 
-    const totalAmount = (order as any).items.reduce(
+    const items = (order as any).items ?? [];
+    const totalAmount = items.reduce(
       (sum: number, item: any) => sum + item.quantity * item.unitPrice,
       0,
     );
 
     await this.orderRepository.updateStatus(orderId, OrderStatus.ENRICHED, {
       totalAmount,
+      conversionRate: enrichedData.exchangeRate,
       enrichedData: enrichedData as any,
       processedAt: new Date(),
     });
@@ -52,13 +55,28 @@ export class OrderProcessor extends WorkerHost {
     return { orderId, enrichedData };
   }
 
-  async onCompleted(job: Job) {
-    this.logger.log(`Job completed: ${job.id}`);
-  }
+  async onFailed(job: Job<OrderJobData>, error: Error) {
+    const maxAttempts = job.opts.attempts ?? 1;
 
-  async onFailed(job: Job, error: Error) {
-    const { orderId } = job.data as OrderJobData;
-    this.logger.error(`Order failed: ${orderId}`);
+    if (job.attemptsMade < maxAttempts) {
+      this.logger.warn(
+        `Attempt ${job.attemptsMade}/${maxAttempts} failed for order ${job.data.orderId}: ${error.message}`,
+      );
+      return;
+    }
+
+    const { orderId } = job.data;
+    this.logger.error(
+      `Order failed after ${maxAttempts} attempts: ${orderId}`,
+      error.stack,
+    );
+
+    await this.dlqQueue.add('dead-letter', {
+      orderId,
+      error: error.message,
+      originalJobId: job.id,
+      failedAt: new Date().toISOString(),
+    });
 
     await this.orderRepository.createFailure(orderId, error.message);
     await this.orderRepository.updateStatus(
