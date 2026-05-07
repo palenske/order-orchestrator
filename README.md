@@ -214,8 +214,7 @@ Pipeline de CI via GitHub Actions (`.github/workflows/ci.yml`):
 
 - Lint (`pnpm lint`)
 - Build (`pnpm build`)
-- Testes unitários + integração (com Postgres e Redis como services)
-- Validação do Dockerfile
+- Testes unitários
 
 ## Recuperação automática
 
