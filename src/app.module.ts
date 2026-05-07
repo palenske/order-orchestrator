@@ -4,6 +4,7 @@ import { PrismaModule } from './database/prisma.module';
 import { OrderModule } from './modules/order/order.module';
 import { QueueModule } from './modules/queue/queue.module';
 import { WebhookModule } from './modules/webhook/webhook.module';
+import { MetricsModule } from './infrastructure/metrics/metrics.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { WebhookModule } from './modules/webhook/webhook.module';
     OrderModule,
     QueueModule,
     WebhookModule,
+    MetricsModule,
   ],
   controllers: [],
   providers: [],

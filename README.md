@@ -11,7 +11,7 @@ curl -X POST "https://order-orchestrator.up.railway.app/webhooks/orders" \
   -H "Content-Type: application/json" \
   -d '{
     "order_id": "ext-123",
-    "customer": { "email": "user@example.com", "name": "Ana" },
+    "customer": { "email": "user@example.com", "name": "Ana", "cep": "01001000" },
     "items": [{ "sku": "ABC123", "qty": 2, "unit_price": 59.9 }],
     "currency": "USD",
     "idempotency_key": "f390a7b8-406c-4436-958f-9cdcd732c8c1"
@@ -22,8 +22,8 @@ curl -X POST "https://order-orchestrator.up.railway.app/webhooks/orders" \
 
 ```bash
 pnpm install
-docker compose up -d
-pnpm db:migrate
+podman compose up -d   # ou docker compose up -d
+pnpm db:migrate        # ou npx prisma db push
 ```
 
 Variáveis de ambiente (`.env`):
@@ -45,9 +45,42 @@ pnpm start:prod          # produção
 ## Testar
 
 ```bash
-pnpm test                # unitários
-pnpm test:e2e            # e2e (requer serviços rodando)
+pnpm test                      # unitários (41 testes)
+pnpm test:integration          # integração (22 testes, requer DB e Redis)
 ```
+
+### Testes de integração
+
+Requer PostgreSQL e Redis rodando (via Docker ou local):
+
+```bash
+podman compose up -d   # ou docker compose up -d
+pnpm db:migrate        # ou npx prisma db push
+pnpm test:integration
+```
+
+Cobertura dos testes de integração:
+
+| Grupo | Testes | O que valida |
+|-------|--------|-------------|
+| **Transições de status** | happy path com CEP | RECEIVED → PROCESSING → ENRICHED → COMPLETED, enrichedData com 4 fontes (exchangeRate, ipInfo, productsInfo, cepInfo) |
+| | happy path sem CEP | COMPLETED sem cepInfo quando customer não tem CEP |
+| | DLQ | Falha em qualquer enriquecimento → FAILED_ENRICHMENT after 3 retries, entrada na DLQ, failure record com mensagem de erro |
+| **Idempotência** | payload duplicado | 409 Conflict na segunda requisição |
+| **Validação de payload** | campos faltando, email inválido, qty negativo, items vazio | 400 Bad Request |
+| **GET /orders** | lista todos | retorna array com pelo menos 2 pedidos |
+| | filtra por status | só COMPLETED ou só RECEIVED |
+| | status vazio | retorna array vazio para FAILED_ENRICHMENT |
+| | paginação | page/limit funcionam |
+| **GET /orders/:id** | detalhes completos | enrichedData, items, customer com cep |
+| | sem CEP | cepInfo undefined, demais fontes presentes |
+| | 404 inexistente | retorna 404 |
+| | order com falha | totalAmount/conversionRate/processedAt nulos |
+| **GET /queue/metrics** | campos obrigatórios | queueName, waiting, active, completed, failed, delayed, paused, health, dlq |
+| | completed >= 1 | após processar pedido |
+| | dlq.count >= 1 e health=unhealthy | após falha de enriquecimento |
+| **Admin failures** | lista + reprocessa | GET /admin/failures?unresolved=true, POST reprocess |
+| | resolve | POST resolve marca como resolvida, some da lista de unresolved |
 
 ## API
 
@@ -59,7 +92,7 @@ curl -X POST http://localhost:3000/webhooks/orders \
   -H "x-webhook-signature: <hmac-sha256>" \
   -d '{
     "order_id": "ext-123",
-    "customer": { "email": "user@example.com", "name": "Ana" },
+    "customer": { "email": "user@example.com", "name": "Ana", "cep": "01001000" },
     "items": [{ "sku": "ABC123", "qty": 2, "unit_price": 59.9 }],
     "currency": "EUR",
     "idempotency_key": "uuid-unico"
@@ -67,6 +100,7 @@ curl -X POST http://localhost:3000/webhooks/orders \
 ```
 
 - Payload validado via `class-validator` (campos obrigatórios, tipos, email)
+- `customer.cep` é opcional — quando fornecido, consulta ViaCEP
 - Idempotência: `idempotency_key` impede processamento duplicado
 - Status inicial: `RECEIVED`
 
@@ -86,6 +120,21 @@ POST /admin/failures/:id/resolve       # marcar como resolvida
 POST /admin/failures/:id/reprocess     # reenfileirar pedido
 ```
 
+### Observabilidade
+
+```
+GET /metrics   # métricas Prometheus
+```
+
+Métricas disponíveis:
+
+| Métrica | Tipo | Descrição |
+|---------|------|-----------|
+| `http_requests_total` | Counter | Requests HTTP por método, rota e status |
+| `http_request_duration_seconds` | Histogram | Latência HTTP |
+| `queue_jobs_processed_total` | Counter | Jobs processados por fila e resultado (completed/failed) |
+| `external_api_request_duration_seconds` | Histogram | Latência das APIs externas por serviço e resultado |
+
 ## Fluxo de processamento
 
 ```
@@ -95,7 +144,7 @@ RECEIVED → PROCESSING → ENRICHED → COMPLETED
 
 1. Webhook recebe e persiste o pedido (`RECEIVED`)
 2. Job enfileirado no BullMQ (`orders`)
-3. Processor consulta APIs externas (câmbio, IP, produtos), atualiza para `ENRICHED` e `COMPLETED`
+3. Processor consulta APIs externas (câmbio, IP, produtos, CEP), atualiza para `ENRICHED` e `COMPLETED`
 4. Em falha: 3 tentativas com backoff exponencial → DLQ (`orders-dlq`) + status `FAILED_ENRICHMENT`
 5. `/admin/failures/:id/reprocess` reenfileira
 
@@ -103,10 +152,12 @@ RECEIVED → PROCESSING → ENRICHED → COMPLETED
 
 | Serviço | Uso | Falha |
 |---------|-----|-------|
-| ExchangeRate-API | Conversão de moeda (obrigatório) | Retry via fila |
-| ip-api | Geolocalização do servidor | Degradado, segue sem IP info |
-| FakeStore API | Validação de produtos por preço | Degradado, segue sem products info |
-| ViaCEP | Busca de CEP (via `enrichWithCep`) | Degradado, segue sem CEP info |
+| ExchangeRate-API | Conversão de moeda | Retry via fila → FAILED_ENRICHMENT |
+| ip-api | Geolocalização do servidor | Retry via fila → FAILED_ENRICHMENT |
+| FakeStore API | Validação de produtos por preço | Retry via fila → FAILED_ENRICHMENT |
+| ViaCEP | Busca de CEP (quando `customer.cep` fornecido) | Retry via fila → FAILED_ENRICHMENT |
+
+Todos os enriquecimentos são obrigatórios para COMPLETED. Se qualquer um falhar, o job entra em retry (3 tentativas com backoff exponencial) e, se persistir, vai para a DLQ com status `FAILED_ENRICHMENT`. O CEP só é consultado quando o campo `cep` está presente no customer.
 
 Todas as chamadas possuem timeout de 10s via `AbortController`.
 
@@ -132,9 +183,36 @@ curl -X POST http://localhost:3000/webhooks/orders \
   -d '{"order_id":"ext-123","customer":{"email":"user@example.com","name":"Ana"},"items":[{"sku":"ABC123","qty":2,"unit_price":59.9}],"currency":"EUR","idempotency_key":"uuid-1"}'
 ```
 
+## Teste de carga
+
+```bash
+# Requer k6 (https://k6.io)
+BASE_URL=http://localhost:3000 k6 run k6/load-test.js
+```
+
+O script envia payloads únicos para `POST /webhooks/orders` com rampa de 20→50→0 VUs.
+
+## CI
+
+Pipeline de CI via GitHub Actions (`.github/workflows/ci.yml`):
+
+- Lint (`pnpm lint`)
+- Build (`pnpm build`)
+- Testes unitários + integração (com Postgres e Redis como services)
+- Validação do Dockerfile
+
+## Recuperação automática
+
+Se o processo falhar entre persistir o pedido e enfileirar o job, o pedido fica em `RECEIVED` sem processamento. Na inicialização, o `RecoveryService` busca todos os pedidos com status `RECEIVED` e os reenfileira automaticamente. Isso garante que nenhum pedido fique preso, mesmo após crashes ou reinícios.
+
+## Limitações conhecidas
+
+Todos os enriquecimentos rodam em uma única fila `orders`. Se qualquer serviço externo falhar, o job inteiro é retentado — incluindo os serviços que já haviam respondido com sucesso. Uma evolução natural seria filas dedicadas por step (câmbio, IP, produtos, CEP), cada uma com seu próprio DLQ e política de retry. Isso permitiria retry granular (ex: 5 tentativas para CEP, 3 para câmbio), isolamento de falhas por serviço, e visibilidade individual de saúde por fila no `/queue/metrics`.
+
 ## Stack
 
 - **NestJS** — framework
 - **BullMQ + Redis** — fila, retry e DLQ
 - **Prisma + PostgreSQL** — persistência
 - **class-validator** — validação de payload
+- **prom-client** — métricas Prometheus

@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { EnrichmentService } from './services/enrichment.service';
 import { OrderRepository } from '../order/repositories/order.repository';
 import { OrderProcessor } from './processors/order.processor';
+import { MetricsService } from '../../infrastructure/metrics/metrics.service';
 import { OrderStatus } from '@prisma/client';
 
 describe('Order Queue Flow', () => {
@@ -36,6 +37,7 @@ describe('Order Queue Flow', () => {
 
   let mockRepo: any;
   let mockDlqQueue: any;
+  let mockMetricsService: any;
   let fetchSpy: jest.SpiedFunction<typeof globalThis.fetch>;
 
   beforeEach(async () => {
@@ -79,12 +81,18 @@ describe('Order Queue Flow', () => {
       add: jest.fn().mockResolvedValue({}),
     };
 
+    mockMetricsService = {
+      queueJobsProcessedTotal: { inc: jest.fn() } as any,
+      externalApiRequestDurationSeconds: { labels: jest.fn().mockReturnValue({ observe: jest.fn() }) } as any,
+    };
+
     const app: TestingModule = await Test.createTestingModule({
       providers: [
         OrderProcessor,
         EnrichmentService,
         { provide: OrderRepository, useValue: mockRepo },
         { provide: 'BullQueue_orders-dlq', useValue: mockDlqQueue },
+        { provide: MetricsService, useValue: mockMetricsService },
       ],
     }).compile();
 

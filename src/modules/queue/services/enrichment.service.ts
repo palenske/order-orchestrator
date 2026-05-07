@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { OrderWithRelations } from '../../order/repositories/order.repository';
+import { MetricsService } from '../../../infrastructure/metrics/metrics.service';
 
 export interface ExchangeRateResult {
   base: string;
@@ -51,27 +52,61 @@ export class EnrichmentService {
   private readonly logger = new Logger(EnrichmentService.name);
   private readonly targetCurrency = 'USD';
 
+  constructor(private readonly metricsService: MetricsService) {}
+
+  private async trackExternal<T>(
+    service: string,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    const start = Date.now();
+    try {
+      const result = await fn();
+      this.metricsService.externalApiRequestDurationSeconds
+        .labels({ service, outcome: 'success' })
+        .observe((Date.now() - start) / 1000);
+      return result;
+    } catch (error) {
+      this.metricsService.externalApiRequestDurationSeconds
+        .labels({ service, outcome: 'error' })
+        .observe((Date.now() - start) / 1000);
+      throw error;
+    }
+  }
+
   async enrich(order: OrderWithRelations): Promise<EnrichedData> {
     this.logger.log(`Enriching order: ${order.id}`);
 
     const items = order.items;
 
-    const [exchangeResult, ipInfo, productsInfo] = await Promise.all([
-      this.getExchangeRateApi(order.currency, this.targetCurrency),
-      this.getIpInfo(),
-      this.validateProducts(items),
-    ]);
-
+    const exchangeResult = await this.trackExternal(
+      'exchange-rate',
+      () => this.getExchangeRateApi(order.currency, this.targetCurrency),
+    );
     const rate = exchangeResult.rate;
+
     const originalTotal = items.reduce(
       (sum, item) => sum + item.quantity * item.unitPrice,
       0,
     );
+
     const convertedTotal = originalTotal * rate;
+
+    const ipInfo = await this.trackExternal(
+      'ip-api',
+      () => this.getIpInfo(),
+    );
+
+    const productsInfo = await this.trackExternal(
+      'fakestoreapi',
+      () => this.validateProducts(items),
+    );
 
     let cepInfo: CepInfoResult | undefined;
     if (order.customer?.cep) {
-      cepInfo = await this.getCepInfo(order.customer.cep);
+      cepInfo = await this.trackExternal(
+        'viacep',
+        () => this.getCepInfo(order.customer!.cep!),
+      );
     }
 
     return {

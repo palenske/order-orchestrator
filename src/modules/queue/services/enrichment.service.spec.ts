@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { EnrichmentService } from './enrichment.service';
+import { MetricsService } from '../../../infrastructure/metrics/metrics.service';
 
 describe('EnrichmentService', () => {
   let service: EnrichmentService;
@@ -41,9 +42,18 @@ describe('EnrichmentService', () => {
     },
   } as any;
 
+  const mockMetricsService = {
+    httpRequestsTotal: { inc: jest.fn() } as any,
+    httpRequestDurationSeconds: { labels: jest.fn().mockReturnValue({ observe: jest.fn() }) } as any,
+    queueJobsProcessedTotal: { inc: jest.fn() } as any,
+    externalApiRequestDurationSeconds: { labels: jest.fn().mockReturnValue({ observe: jest.fn() }) } as any,
+    getMetrics: jest.fn(),
+    getContentType: jest.fn(),
+  };
+
   beforeEach(async () => {
     const app: TestingModule = await Test.createTestingModule({
-      providers: [EnrichmentService],
+      providers: [EnrichmentService, { provide: MetricsService, useValue: mockMetricsService }],
     }).compile();
 
     service = app.get<EnrichmentService>(EnrichmentService);

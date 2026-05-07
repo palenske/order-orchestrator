@@ -3,6 +3,7 @@ import { Logger } from '@nestjs/common';
 import { Job, Queue } from 'bullmq';
 import { OrderRepository } from '../../order/repositories/order.repository';
 import { EnrichmentService } from '../services/enrichment.service';
+import { MetricsService } from '../../../infrastructure/metrics/metrics.service';
 import { OrderStatus } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
 
@@ -20,6 +21,7 @@ export class OrderProcessor extends WorkerHost {
     private readonly orderRepository: OrderRepository,
     private readonly enrichmentService: EnrichmentService,
     @InjectQueue('orders-dlq') private readonly dlqQueue: Queue,
+    private readonly metricsService: MetricsService,
   ) {
     super();
   }
@@ -52,6 +54,9 @@ export class OrderProcessor extends WorkerHost {
     await this.orderRepository.updateStatus(orderId, OrderStatus.COMPLETED);
 
     this.logger.log(`Order completed: ${orderId}`);
+    this.metricsService.queueJobsProcessedTotal.inc(
+      { queue: 'orders', outcome: 'completed' },
+    );
     return { orderId, enrichedData };
   }
 
@@ -84,6 +89,10 @@ export class OrderProcessor extends WorkerHost {
       originalJobId: job.id,
       failedAt: new Date().toISOString(),
     });
+
+    this.metricsService.queueJobsProcessedTotal.inc(
+      { queue: 'orders', outcome: 'failed' },
+    );
 
     await this.orderRepository.createFailure(orderId, error.message);
     await this.orderRepository.updateStatus(
