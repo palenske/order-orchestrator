@@ -39,9 +39,9 @@ export interface EnrichedData {
   rateSource: string;
   timestamp: string;
   exchangeRateApi: ExchangeRateResult;
-  ipInfo?: IpInfoResult;
+  ipInfo: IpInfoResult;
   cepInfo?: CepInfoResult;
-  productsInfo?: ProductsInfoResult;
+  productsInfo: ProductsInfoResult;
 }
 
 const FETCH_TIMEOUT_MS = 10_000;
@@ -56,34 +56,23 @@ export class EnrichmentService {
 
     const items = order.items;
 
-    const exchangeResult = await this.getExchangeRateApi(
-      order.currency,
-      this.targetCurrency,
-    );
-    const rate = exchangeResult.rate;
+    const [exchangeResult, ipInfo, productsInfo] = await Promise.all([
+      this.getExchangeRateApi(order.currency, this.targetCurrency),
+      this.getIpInfo(),
+      this.validateProducts(items),
+    ]);
 
+    const rate = exchangeResult.rate;
     const originalTotal = items.reduce(
       (sum, item) => sum + item.quantity * item.unitPrice,
       0,
     );
-
     const convertedTotal = originalTotal * rate;
 
-    const ipInfo = await this.getIpInfo().catch((error) => {
-      this.logger.warn(
-        'IP info enrichment failed, continuing without it',
-        error,
-      );
-      return undefined;
-    });
-
-    const productsInfo = await this.validateProducts(items).catch((error) => {
-      this.logger.warn(
-        'Product validation enrichment failed, continuing without it',
-        error,
-      );
-      return undefined;
-    });
+    let cepInfo: CepInfoResult | undefined;
+    if (order.customer?.cep) {
+      cepInfo = await this.getCepInfo(order.customer.cep);
+    }
 
     return {
       exchangeRate: rate,
@@ -93,26 +82,9 @@ export class EnrichmentService {
       timestamp: new Date().toISOString(),
       exchangeRateApi: exchangeResult,
       ipInfo,
+      cepInfo,
       productsInfo,
     };
-  }
-
-  async enrichWithCep(
-    order: OrderWithRelations,
-    cep: string,
-  ): Promise<EnrichedData> {
-    const baseData = await this.enrich(order);
-
-    const cepInfo = await this.getCepInfo(cep).catch((error) => {
-      this.logger.error(`Failed to get CEP info: ${cep}`, error);
-      return undefined;
-    });
-
-    if (cepInfo) {
-      return { ...baseData, cepInfo };
-    }
-
-    return baseData;
   }
 
   private async fetchWithTimeout(

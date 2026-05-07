@@ -31,7 +31,11 @@ export class WebhookService {
         idempotencyKey: dto.idempotency_key,
         currency: dto.currency,
         customer: dto.customer
-          ? { email: dto.customer.email, name: dto.customer.name }
+          ? {
+              email: dto.customer.email,
+              name: dto.customer.name,
+              cep: dto.customer.cep,
+            }
           : undefined,
         items: dto.items.map((item) => ({
           sku: item.sku,

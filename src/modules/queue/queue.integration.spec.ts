@@ -134,12 +134,11 @@ describe('Order Queue Flow', () => {
       );
     });
 
-    it('should handle order not found error', async () => {
+    it('should handle order not found gracefully', async () => {
       jest.spyOn(repository, 'findById').mockResolvedValue(null);
 
-      await expect(
-        processor.handleEnrichOrder({ data: { orderId: 'invalid' } } as any),
-      ).rejects.toThrow('Order not found');
+      const result = await processor.handleEnrichOrder({ data: { orderId: 'invalid' } } as any);
+      expect(result).toEqual({ orderId: 'invalid', skipped: true });
     });
 
     it('should handle onFailed and update to FAILED_ENRICHMENT when all retries exhausted', async () => {

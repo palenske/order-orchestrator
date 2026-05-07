@@ -6,6 +6,7 @@ import {
   Min,
   ArrayMinSize,
   ValidateNested,
+  IsOptional,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -15,6 +16,10 @@ export class CustomerDto {
 
   @IsString()
   name: string;
+
+  @IsOptional()
+  @IsString()
+  cep?: string;
 }
 
 export class OrderItemDto {

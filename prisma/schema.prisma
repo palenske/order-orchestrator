@@ -20,6 +20,7 @@ model Customer {
   id         String   @id @default(uuid())
   email      String
   name       String
+  cep        String?
   externalId String?  @unique
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt

@@ -1,4 +1,4 @@
-import { Processor, WorkerHost, InjectQueue } from '@nestjs/bullmq';
+import { Processor, WorkerHost, InjectQueue, OnWorkerEvent } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job, Queue } from 'bullmq';
 import { OrderRepository } from '../../order/repositories/order.repository';
@@ -32,12 +32,13 @@ export class OrderProcessor extends WorkerHost {
     const { orderId } = job.data;
     this.logger.log(`Processing order: ${orderId}`);
 
-    await this.orderRepository.updateStatus(orderId, OrderStatus.PROCESSING);
-
     const order = await this.orderRepository.findById(orderId);
     if (!order) {
-      throw new Error(`Order not found: ${orderId}`);
+      this.logger.warn(`Order not found, skipping: ${orderId}`);
+      return { orderId, skipped: true };
     }
+
+    await this.orderRepository.updateStatus(orderId, OrderStatus.PROCESSING);
 
     const enrichedData = await this.enrichmentService.enrich(order);
 
@@ -54,6 +55,7 @@ export class OrderProcessor extends WorkerHost {
     return { orderId, enrichedData };
   }
 
+  @OnWorkerEvent('failed')
   async onFailed(job: Job<OrderJobData>, error: Error) {
     const maxAttempts = job.opts.attempts ?? 1;
 
@@ -69,6 +71,12 @@ export class OrderProcessor extends WorkerHost {
       `Order failed after ${maxAttempts} attempts: ${orderId}`,
       error.stack,
     );
+
+    const order = await this.orderRepository.findById(orderId);
+    if (!order) {
+      this.logger.warn(`Order not found in onFailed, skipping: ${orderId}`);
+      return;
+    }
 
     await this.dlqQueue.add('dead-letter', {
       orderId,

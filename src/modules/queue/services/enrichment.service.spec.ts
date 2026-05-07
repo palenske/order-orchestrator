@@ -28,6 +28,19 @@ describe('EnrichmentService', () => {
     processedAt: null,
   } as any;
 
+  const mockOrderWithCep = {
+    ...mockOrder,
+    customer: {
+      id: 'cust-1',
+      email: 'test@test.com',
+      name: 'Test',
+      cep: '01001000',
+      externalId: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+  } as any;
+
   beforeEach(async () => {
     const app: TestingModule = await Test.createTestingModule({
       providers: [EnrichmentService],
@@ -47,14 +60,14 @@ describe('EnrichmentService', () => {
       fetchSpy.mockRestore();
     });
 
-    it('should return enriched data with exchange rate', async () => {
+    function mockAllApis(overrides?: { exchangeRates?: Record<string, number>; cep?: boolean }) {
       fetchSpy.mockImplementation(async (url: string | URL | Request) => {
         const urlStr = url.toString();
         if (urlStr.includes('exchangerate-api')) {
           return new Response(
             JSON.stringify({
               base_code: 'EUR',
-              rates: { USD: 1.1 },
+              rates: overrides?.exchangeRates ?? { USD: 1.1 },
             }),
             { status: 200 },
           );
@@ -74,8 +87,24 @@ describe('EnrichmentService', () => {
         if (urlStr.includes('fakestoreapi')) {
           return new Response(JSON.stringify([]), { status: 200 });
         }
+        if (overrides?.cep && urlStr.includes('viacep')) {
+          return new Response(
+            JSON.stringify({
+              cep: '01001-000',
+              logradouro: 'Praça da Sé',
+              bairro: 'Sé',
+              localidade: 'São Paulo',
+              uf: 'SP',
+            }),
+            { status: 200 },
+          );
+        }
         return new Response(null, { status: 404 });
       });
+    }
+
+    it('should return enriched data with all 4 sources', async () => {
+      mockAllApis();
 
       const result = await service.enrich(mockOrder);
 
@@ -84,9 +113,20 @@ describe('EnrichmentService', () => {
       expect(result.originalTotal).toBe(100);
       expect(result.rateSource).toBe('ExchangeRate-API');
       expect(result.ipInfo).toBeDefined();
-      expect(result.ipInfo?.ip).toBe('1.2.3.4');
+      expect(result.ipInfo!.ip).toBe('1.2.3.4');
       expect(result.productsInfo).toBeDefined();
-      expect(result.productsInfo?.validated).toBe(true);
+      expect(result.productsInfo!.validated).toBe(true);
+      expect(result.cepInfo).toBeUndefined();
+    });
+
+    it('should include cepInfo when customer has cep', async () => {
+      mockAllApis({ cep: true });
+
+      const result = await service.enrich(mockOrderWithCep);
+
+      expect(result.cepInfo).toBeDefined();
+      expect(result.cepInfo!.cep).toBe('01001-000');
+      expect(result.cepInfo!.city).toBe('São Paulo');
     });
 
     it('should throw when exchange rate API fails', async () => {
@@ -97,7 +137,7 @@ describe('EnrichmentService', () => {
       );
     });
 
-    it('should continue without ipInfo and productsInfo when they fail', async () => {
+    it('should throw when IP info API fails', async () => {
       fetchSpy.mockImplementation(async (url: string | URL | Request) => {
         const urlStr = url.toString();
         if (urlStr.includes('exchangerate-api')) {
@@ -110,16 +150,79 @@ describe('EnrichmentService', () => {
           throw new Error('IP API down');
         }
         if (urlStr.includes('fakestoreapi')) {
-          throw new Error('Products API down');
+          return new Response(JSON.stringify([]), { status: 200 });
         }
         return new Response(null, { status: 404 });
       });
 
-      const result = await service.enrich(mockOrder);
+      await expect(service.enrich(mockOrder)).rejects.toThrow('IP API down');
+    });
 
-      expect(result.exchangeRate).toBe(1.1);
-      expect(result.ipInfo).toBeUndefined();
-      expect(result.productsInfo).toBeUndefined();
+    it('should throw when products API fails', async () => {
+      fetchSpy.mockImplementation(async (url: string | URL | Request) => {
+        const urlStr = url.toString();
+        if (urlStr.includes('exchangerate-api')) {
+          return new Response(
+            JSON.stringify({ base_code: 'EUR', rates: { USD: 1.1 } }),
+            { status: 200 },
+          );
+        }
+        if (urlStr.includes('ip-api')) {
+          return new Response(
+            JSON.stringify({
+              status: 'success',
+              query: '1.2.3.4',
+              country: 'US',
+              city: 'New York',
+              isp: 'TestISP',
+            }),
+            { status: 200 },
+          );
+        }
+        if (urlStr.includes('fakestoreapi')) {
+          return new Response(null, { status: 500 });
+        }
+        return new Response(null, { status: 404 });
+      });
+
+      await expect(service.enrich(mockOrder)).rejects.toThrow(
+        'Products API returned status 500',
+      );
+    });
+
+    it('should throw when CEP API fails for customer with cep', async () => {
+      fetchSpy.mockImplementation(async (url: string | URL | Request) => {
+        const urlStr = url.toString();
+        if (urlStr.includes('exchangerate-api')) {
+          return new Response(
+            JSON.stringify({ base_code: 'EUR', rates: { USD: 1.1 } }),
+            { status: 200 },
+          );
+        }
+        if (urlStr.includes('ip-api')) {
+          return new Response(
+            JSON.stringify({
+              status: 'success',
+              query: '1.2.3.4',
+              country: 'US',
+              city: 'New York',
+              isp: 'TestISP',
+            }),
+            { status: 200 },
+          );
+        }
+        if (urlStr.includes('fakestoreapi')) {
+          return new Response(JSON.stringify([]), { status: 200 });
+        }
+        if (urlStr.includes('viacep')) {
+          return new Response(null, { status: 404 });
+        }
+        return new Response(null, { status: 404 });
+      });
+
+      await expect(service.enrich(mockOrderWithCep)).rejects.toThrow(
+        'CEP API returned status 404',
+      );
     });
 
     it('should throw when exchange rate for target currency is missing', async () => {
@@ -130,6 +233,21 @@ describe('EnrichmentService', () => {
             JSON.stringify({ base_code: 'EUR', rates: {} }),
             { status: 200 },
           );
+        }
+        if (urlStr.includes('ip-api')) {
+          return new Response(
+            JSON.stringify({
+              status: 'success',
+              query: '1.2.3.4',
+              country: 'US',
+              city: 'New York',
+              isp: 'TestISP',
+            }),
+            { status: 200 },
+          );
+        }
+        if (urlStr.includes('fakestoreapi')) {
+          return new Response(JSON.stringify([]), { status: 200 });
         }
         return new Response(null, { status: 404 });
       });
