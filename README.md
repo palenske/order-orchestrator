@@ -22,16 +22,15 @@ curl -X POST "https://order-orchestrator.up.railway.app/webhooks/orders" \
 
 ```bash
 pnpm install
-podman compose up -d   # ou docker compose up -d
-pnpm db:migrate        # ou npx prisma db push
+docker compose up -d
+pnpm db:migrate
 ```
 
 Variáveis de ambiente (`.env`):
 
 ```
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/order_orch
-REDIS_HOST=localhost
-REDIS_PORT=6379
+REDIS_URL=redis://localhost:6379
 WEBHOOK_SECRET=          # vazio = verificação desabilitada
 ```
 
@@ -54,8 +53,8 @@ pnpm test:integration          # integração (22 testes, requer DB e Redis)
 Requer PostgreSQL e Redis rodando (via Docker ou local):
 
 ```bash
-podman compose up -d   # ou docker compose up -d
-pnpm db:migrate        # ou npx prisma db push
+docker compose up -d
+pnpm db:migrate
 pnpm test:integration
 ```
 
