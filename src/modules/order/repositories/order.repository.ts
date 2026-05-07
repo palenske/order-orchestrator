@@ -51,7 +51,12 @@ export class OrderRepository {
     externalId: string;
     idempotencyKey: string;
     currency: string;
-    customer?: { email: string; name: string; cep?: string; externalId?: string };
+    customer?: {
+      email: string;
+      name: string;
+      cep?: string;
+      externalId?: string;
+    };
     items: { sku: string; quantity: number; unitPrice: number }[];
   }): Promise<Order> {
     const { customer, items, ...orderData } = data;

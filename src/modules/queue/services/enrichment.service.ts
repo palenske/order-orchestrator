@@ -78,9 +78,8 @@ export class EnrichmentService {
 
     const items = order.items;
 
-    const exchangeResult = await this.trackExternal(
-      'exchange-rate',
-      () => this.getExchangeRateApi(order.currency, this.targetCurrency),
+    const exchangeResult = await this.trackExternal('exchange-rate', () =>
+      this.getExchangeRateApi(order.currency, this.targetCurrency),
     );
     const rate = exchangeResult.rate;
 
@@ -91,21 +90,16 @@ export class EnrichmentService {
 
     const convertedTotal = originalTotal * rate;
 
-    const ipInfo = await this.trackExternal(
-      'ip-api',
-      () => this.getIpInfo(),
-    );
+    const ipInfo = await this.trackExternal('ip-api', () => this.getIpInfo());
 
-    const productsInfo = await this.trackExternal(
-      'fakestoreapi',
-      () => this.validateProducts(items),
+    const productsInfo = await this.trackExternal('fakestoreapi', () =>
+      this.validateProducts(items),
     );
 
     let cepInfo: CepInfoResult | undefined;
     if (order.customer?.cep) {
-      cepInfo = await this.trackExternal(
-        'viacep',
-        () => this.getCepInfo(order.customer!.cep!),
+      cepInfo = await this.trackExternal('viacep', () =>
+        this.getCepInfo(order.customer!.cep!),
       );
     }
 

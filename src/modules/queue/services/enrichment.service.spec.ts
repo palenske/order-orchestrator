@@ -44,16 +44,23 @@ describe('EnrichmentService', () => {
 
   const mockMetricsService = {
     httpRequestsTotal: { inc: jest.fn() } as any,
-    httpRequestDurationSeconds: { labels: jest.fn().mockReturnValue({ observe: jest.fn() }) } as any,
+    httpRequestDurationSeconds: {
+      labels: jest.fn().mockReturnValue({ observe: jest.fn() }),
+    } as any,
     queueJobsProcessedTotal: { inc: jest.fn() } as any,
-    externalApiRequestDurationSeconds: { labels: jest.fn().mockReturnValue({ observe: jest.fn() }) } as any,
+    externalApiRequestDurationSeconds: {
+      labels: jest.fn().mockReturnValue({ observe: jest.fn() }),
+    } as any,
     getMetrics: jest.fn(),
     getContentType: jest.fn(),
   };
 
   beforeEach(async () => {
     const app: TestingModule = await Test.createTestingModule({
-      providers: [EnrichmentService, { provide: MetricsService, useValue: mockMetricsService }],
+      providers: [
+        EnrichmentService,
+        { provide: MetricsService, useValue: mockMetricsService },
+      ],
     }).compile();
 
     service = app.get<EnrichmentService>(EnrichmentService);
@@ -70,7 +77,10 @@ describe('EnrichmentService', () => {
       fetchSpy.mockRestore();
     });
 
-    function mockAllApis(overrides?: { exchangeRates?: Record<string, number>; cep?: boolean }) {
+    function mockAllApis(overrides?: {
+      exchangeRates?: Record<string, number>;
+      cep?: boolean;
+    }) {
       fetchSpy.mockImplementation(async (url: string | URL | Request) => {
         const urlStr = url.toString();
         if (urlStr.includes('exchangerate-api')) {
@@ -239,10 +249,9 @@ describe('EnrichmentService', () => {
       fetchSpy.mockImplementation(async (url: string | URL | Request) => {
         const urlStr = url.toString();
         if (urlStr.includes('exchangerate-api')) {
-          return new Response(
-            JSON.stringify({ base_code: 'EUR', rates: {} }),
-            { status: 200 },
-          );
+          return new Response(JSON.stringify({ base_code: 'EUR', rates: {} }), {
+            status: 200,
+          });
         }
         if (urlStr.includes('ip-api')) {
           return new Response(

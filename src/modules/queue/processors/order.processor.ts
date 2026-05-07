@@ -1,4 +1,9 @@
-import { Processor, WorkerHost, InjectQueue, OnWorkerEvent } from '@nestjs/bullmq';
+import {
+  Processor,
+  WorkerHost,
+  InjectQueue,
+  OnWorkerEvent,
+} from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job, Queue } from 'bullmq';
 import { OrderRepository } from '../../order/repositories/order.repository';
@@ -54,9 +59,10 @@ export class OrderProcessor extends WorkerHost {
     await this.orderRepository.updateStatus(orderId, OrderStatus.COMPLETED);
 
     this.logger.log(`Order completed: ${orderId}`);
-    this.metricsService.queueJobsProcessedTotal.inc(
-      { queue: 'orders', outcome: 'completed' },
-    );
+    this.metricsService.queueJobsProcessedTotal.inc({
+      queue: 'orders',
+      outcome: 'completed',
+    });
     return { orderId, enrichedData };
   }
 
@@ -90,9 +96,10 @@ export class OrderProcessor extends WorkerHost {
       failedAt: new Date().toISOString(),
     });
 
-    this.metricsService.queueJobsProcessedTotal.inc(
-      { queue: 'orders', outcome: 'failed' },
-    );
+    this.metricsService.queueJobsProcessedTotal.inc({
+      queue: 'orders',
+      outcome: 'failed',
+    });
 
     await this.orderRepository.createFailure(orderId, error.message);
     await this.orderRepository.updateStatus(

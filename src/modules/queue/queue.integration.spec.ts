@@ -83,7 +83,9 @@ describe('Order Queue Flow', () => {
 
     mockMetricsService = {
       queueJobsProcessedTotal: { inc: jest.fn() } as any,
-      externalApiRequestDurationSeconds: { labels: jest.fn().mockReturnValue({ observe: jest.fn() }) } as any,
+      externalApiRequestDurationSeconds: {
+        labels: jest.fn().mockReturnValue({ observe: jest.fn() }),
+      } as any,
     };
 
     const app: TestingModule = await Test.createTestingModule({
@@ -145,7 +147,9 @@ describe('Order Queue Flow', () => {
     it('should handle order not found gracefully', async () => {
       jest.spyOn(repository, 'findById').mockResolvedValue(null);
 
-      const result = await processor.handleEnrichOrder({ data: { orderId: 'invalid' } } as any);
+      const result = await processor.handleEnrichOrder({
+        data: { orderId: 'invalid' },
+      } as any);
       expect(result).toEqual({ orderId: 'invalid', skipped: true });
     });
 

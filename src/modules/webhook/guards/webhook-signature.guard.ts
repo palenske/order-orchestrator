@@ -12,7 +12,10 @@ export class WebhookSignatureGuard implements CanActivate {
   private readonly logger = new Logger(WebhookSignatureGuard.name);
 
   canActivate(context: ExecutionContext): boolean {
-    const request = context.switchToHttp().getRequest();
+    const request = context.switchToHttp().getRequest<{
+      headers: Record<string, string | undefined>;
+      body: unknown;
+    }>();
     const webhookSecret = process.env.WEBHOOK_SECRET;
 
     if (!webhookSecret) {

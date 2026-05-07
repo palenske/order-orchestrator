@@ -115,11 +115,9 @@ describe('Integration Tests', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.status).toBe('RECEIVED');
 
-      const orderId = (
-        await prisma.order.findFirst({
-          where: { idempotencyKey: uniqueKey('flow') },
-        })
-      )!.id;
+      const orderId = (await prisma.order.findFirst({
+        where: { idempotencyKey: uniqueKey('flow') },
+      }))!.id;
 
       await waitForStatus(orderId, OrderStatus.COMPLETED, 20000);
 
@@ -154,11 +152,9 @@ describe('Integration Tests', () => {
 
       expect(res.body.success).toBe(true);
 
-      const orderId = (
-        await prisma.order.findFirst({
-          where: { idempotencyKey: uniqueKey('nocep') },
-        })
-      )!.id;
+      const orderId = (await prisma.order.findFirst({
+        where: { idempotencyKey: uniqueKey('nocep') },
+      }))!.id;
 
       await waitForStatus(orderId, OrderStatus.COMPLETED, 20000);
 
@@ -194,9 +190,7 @@ describe('Integration Tests', () => {
 
       expect(order!.items).toHaveLength(2);
       expect(order!.items.find((i) => i.sku === 'SKU-A')!.quantity).toBe(3);
-      expect(order!.items.find((i) => i.sku === 'SKU-A')!.unitPrice).toBe(
-        15.5,
-      );
+      expect(order!.items.find((i) => i.sku === 'SKU-A')!.unitPrice).toBe(15.5);
       expect(order!.items.find((i) => i.sku === 'SKU-B')!.quantity).toBe(1);
       expect(order!.customer!.email).toBe('items@test.com');
     });
@@ -219,11 +213,7 @@ describe('Integration Tests', () => {
         where: { idempotencyKey: uniqueKey('fail') },
       });
 
-      await waitForStatus(
-        order!.id,
-        OrderStatus.FAILED_ENRICHMENT,
-        30000,
-      );
+      await waitForStatus(order!.id, OrderStatus.FAILED_ENRICHMENT, 30000);
 
       const failed = await prisma.order.findUnique({
         where: { id: order!.id },
@@ -340,9 +330,7 @@ describe('Integration Tests', () => {
         })
         .expect(201);
 
-      const res = await request(app.getHttpServer())
-        .get('/orders')
-        .expect(200);
+      const res = await request(app.getHttpServer()).get('/orders').expect(200);
 
       expect(Array.isArray(res.body)).toBe(true);
       expect(res.body.length).toBeGreaterThanOrEqual(2);
@@ -371,14 +359,18 @@ describe('Integration Tests', () => {
 
       expect(Array.isArray(completedRes.body)).toBe(true);
       expect(completedRes.body.length).toBeGreaterThanOrEqual(1);
-      expect(completedRes.body.every((o: any) => o.status === 'COMPLETED')).toBe(true);
+      expect(
+        completedRes.body.every((o: any) => o.status === 'COMPLETED'),
+      ).toBe(true);
 
       const receivedRes = await request(app.getHttpServer())
         .get('/orders?status=RECEIVED')
         .expect(200);
 
       expect(Array.isArray(receivedRes.body)).toBe(true);
-      expect(receivedRes.body.every((o: any) => o.status === 'RECEIVED')).toBe(true);
+      expect(receivedRes.body.every((o: any) => o.status === 'RECEIVED')).toBe(
+        true,
+      );
     });
 
     it('should return empty array for status with no orders', async () => {
@@ -417,7 +409,11 @@ describe('Integration Tests', () => {
         .post('/webhooks/orders')
         .send({
           order_id: uniqueOrderId('detail'),
-          customer: { email: 'detail@test.com', name: 'Detail', cep: '01001000' },
+          customer: {
+            email: 'detail@test.com',
+            name: 'Detail',
+            cep: '01001000',
+          },
           items: [
             { sku: 'SKU-A', qty: 3, unit_price: 15.5 },
             { sku: 'SKU-B', qty: 1, unit_price: 99.9 },
@@ -607,11 +603,7 @@ describe('Integration Tests', () => {
       const order = await prisma.order.findFirst({
         where: { idempotencyKey: uniqueKey('reproc') },
       });
-      await waitForStatus(
-        order!.id,
-        OrderStatus.FAILED_ENRICHMENT,
-        30000,
-      );
+      await waitForStatus(order!.id, OrderStatus.FAILED_ENRICHMENT, 30000);
 
       const failuresRes = await request(app.getHttpServer())
         .get('/admin/failures?unresolved=true')
@@ -665,7 +657,9 @@ describe('Integration Tests', () => {
         .get('/admin/failures?unresolved=true')
         .expect(200);
 
-      expect(resolvedRes.body.find((f: any) => f.id === failure.id)).toBeUndefined();
+      expect(
+        resolvedRes.body.find((f: any) => f.id === failure.id),
+      ).toBeUndefined();
     });
   });
 });
