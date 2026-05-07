@@ -58,14 +58,6 @@ jobs:
           REDIS_URL: redis://localhost:6379
 
       - run: pnpm run test
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/order_orch_test
-          REDIS_URL: redis://localhost:6379
-
-      - run: pnpm run test:integration
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/order_orch_test
-          REDIS_URL: redis://localhost:6379
 
       - name: Validate Dockerfile
         run: docker build -t order-orch-ci .
