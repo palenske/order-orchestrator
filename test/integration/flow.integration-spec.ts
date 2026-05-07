@@ -317,42 +317,277 @@ describe('Integration Tests', () => {
   });
 
   describe('GET /orders', () => {
-    it('should list orders and filter by status', async () => {
+    it('should list all orders when no filter is provided', async () => {
       await request(app.getHttpServer())
         .post('/webhooks/orders')
         .send({
-          order_id: uniqueOrderId('list'),
-          customer: { email: 'list@test.com', name: 'List' },
+          order_id: uniqueOrderId('list-all-1'),
+          customer: { email: 'list1@test.com', name: 'List1' },
           items: [{ sku: 'SKU1', qty: 1, unit_price: 10 }],
           currency: 'USD',
-          idempotency_key: uniqueKey('list'),
+          idempotency_key: uniqueKey('list-all-1'),
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post('/webhooks/orders')
+        .send({
+          order_id: uniqueOrderId('list-all-2'),
+          customer: { email: 'list2@test.com', name: 'List2' },
+          items: [{ sku: 'SKU2', qty: 2, unit_price: 20 }],
+          currency: 'USD',
+          idempotency_key: uniqueKey('list-all-2'),
+        })
+        .expect(201);
+
+      const res = await request(app.getHttpServer())
+        .get('/orders')
+        .expect(200);
+
+      expect(Array.isArray(res.body)).toBe(true);
+      expect(res.body.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('should filter orders by status', async () => {
+      await request(app.getHttpServer())
+        .post('/webhooks/orders')
+        .send({
+          order_id: uniqueOrderId('list-status'),
+          customer: { email: 'status@test.com', name: 'Status' },
+          items: [{ sku: 'SKU1', qty: 1, unit_price: 10 }],
+          currency: 'USD',
+          idempotency_key: uniqueKey('list-status'),
         })
         .expect(201);
 
       const order = await prisma.order.findFirst({
-        where: { idempotencyKey: uniqueKey('list') },
+        where: { idempotencyKey: uniqueKey('list-status') },
       });
       await waitForStatus(order!.id, OrderStatus.COMPLETED, 20000);
 
-      const listRes = await request(app.getHttpServer())
+      const completedRes = await request(app.getHttpServer())
         .get('/orders?status=COMPLETED')
         .expect(200);
 
-      expect(Array.isArray(listRes.body)).toBe(true);
-      expect(listRes.body.length).toBeGreaterThanOrEqual(1);
+      expect(Array.isArray(completedRes.body)).toBe(true);
+      expect(completedRes.body.length).toBeGreaterThanOrEqual(1);
+      expect(completedRes.body.every((o: any) => o.status === 'COMPLETED')).toBe(true);
 
-      const singleRes = await request(app.getHttpServer())
-        .get(`/orders/${listRes.body[0].id}`)
+      const receivedRes = await request(app.getHttpServer())
+        .get('/orders?status=RECEIVED')
         .expect(200);
 
-      expect(singleRes.body.id).toBe(listRes.body[0].id);
-      expect(singleRes.body.status).toBe('COMPLETED');
+      expect(Array.isArray(receivedRes.body)).toBe(true);
+      expect(receivedRes.body.every((o: any) => o.status === 'RECEIVED')).toBe(true);
+    });
+
+    it('should return empty array for status with no orders', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/orders?status=FAILED_ENRICHMENT')
+        .expect(200);
+
+      expect(Array.isArray(res.body)).toBe(true);
+      expect(res.body.length).toBe(0);
+    });
+
+    it('should paginate results with page and limit', async () => {
+      await request(app.getHttpServer())
+        .post('/webhooks/orders')
+        .send({
+          order_id: uniqueOrderId('pag'),
+          customer: { email: 'pag@test.com', name: 'Pag' },
+          items: [{ sku: 'SKU1', qty: 1, unit_price: 10 }],
+          currency: 'USD',
+          idempotency_key: uniqueKey('pag'),
+        })
+        .expect(201);
+
+      const res = await request(app.getHttpServer())
+        .get('/orders?page=1&limit=1')
+        .expect(200);
+
+      expect(Array.isArray(res.body)).toBe(true);
+      expect(res.body.length).toBeLessThanOrEqual(1);
+    });
+  });
+
+  describe('GET /orders/:id', () => {
+    it('should return full order details with items and customer', async () => {
+      await request(app.getHttpServer())
+        .post('/webhooks/orders')
+        .send({
+          order_id: uniqueOrderId('detail'),
+          customer: { email: 'detail@test.com', name: 'Detail', cep: '01001000' },
+          items: [
+            { sku: 'SKU-A', qty: 3, unit_price: 15.5 },
+            { sku: 'SKU-B', qty: 1, unit_price: 99.9 },
+          ],
+          currency: 'EUR',
+          idempotency_key: uniqueKey('detail'),
+        })
+        .expect(201);
+
+      const order = await prisma.order.findFirst({
+        where: { idempotencyKey: uniqueKey('detail') },
+      });
+      await waitForStatus(order!.id, OrderStatus.COMPLETED, 20000);
+
+      const res = await request(app.getHttpServer())
+        .get(`/orders/${order!.id}`)
+        .expect(200);
+
+      expect(res.body.id).toBe(order!.id);
+      expect(res.body.externalId).toBe(uniqueOrderId('detail'));
+      expect(res.body.status).toBe('COMPLETED');
+      expect(res.body.currency).toBe('EUR');
+      expect(res.body.totalAmount).toBeDefined();
+      expect(res.body.conversionRate).toBeDefined();
+      expect(res.body.processedAt).toBeDefined();
+      expect(res.body.enrichedData).toBeDefined();
+
+      const enriched = res.body.enrichedData;
+      expect(enriched.exchangeRateApi).toBeDefined();
+      expect(enriched.ipInfo).toBeDefined();
+      expect(enriched.productsInfo).toBeDefined();
+      expect(enriched.cepInfo).toBeDefined();
+
+      expect(Array.isArray(res.body.items)).toBe(true);
+      expect(res.body.items).toHaveLength(2);
+
+      expect(res.body.customer).toBeDefined();
+      expect(res.body.customer.email).toBe('detail@test.com');
+      expect(res.body.customer.name).toBe('Detail');
+      expect(res.body.customer.cep).toBe('01001000');
+    });
+
+    it('should return order without CEP enrichment when customer has no cep', async () => {
+      await request(app.getHttpServer())
+        .post('/webhooks/orders')
+        .send({
+          order_id: uniqueOrderId('nocep-detail'),
+          customer: { email: 'nocep2@test.com', name: 'NoCepDetail' },
+          items: [{ sku: 'SKU1', qty: 1, unit_price: 10 }],
+          currency: 'USD',
+          idempotency_key: uniqueKey('nocep-detail'),
+        })
+        .expect(201);
+
+      const order = await prisma.order.findFirst({
+        where: { idempotencyKey: uniqueKey('nocep-detail') },
+      });
+      await waitForStatus(order!.id, OrderStatus.COMPLETED, 20000);
+
+      const res = await request(app.getHttpServer())
+        .get(`/orders/${order!.id}`)
+        .expect(200);
+
+      expect(res.body.enrichedData.cepInfo).toBeUndefined();
+      expect(res.body.enrichedData.ipInfo).toBeDefined();
+      expect(res.body.enrichedData.exchangeRateApi).toBeDefined();
+      expect(res.body.enrichedData.productsInfo).toBeDefined();
     });
 
     it('should return 404 for nonexistent order', async () => {
       await request(app.getHttpServer())
         .get('/orders/00000000-0000-0000-0000-000000000000')
         .expect(404);
+    });
+
+    it('should return FAILED_ENRICHMENT order with failure details', async () => {
+      await request(app.getHttpServer())
+        .post('/webhooks/orders')
+        .send({
+          order_id: uniqueOrderId('fail-detail'),
+          customer: { email: 'faild@test.com', name: 'FailDetail' },
+          items: [{ sku: 'FAIL', qty: 1, unit_price: 10 }],
+          currency: 'INVALID_CURRENCY_XYZ',
+          idempotency_key: uniqueKey('fail-detail'),
+        })
+        .expect(201);
+
+      const order = await prisma.order.findFirst({
+        where: { idempotencyKey: uniqueKey('fail-detail') },
+      });
+      await waitForStatus(order!.id, OrderStatus.FAILED_ENRICHMENT, 30000);
+
+      const res = await request(app.getHttpServer())
+        .get(`/orders/${order!.id}`)
+        .expect(200);
+
+      expect(res.body.status).toBe('FAILED_ENRICHMENT');
+      expect(res.body.totalAmount).toBeNull();
+      expect(res.body.conversionRate).toBeNull();
+      expect(res.body.processedAt).toBeNull();
+    });
+  });
+
+  describe('GET /queue/metrics', () => {
+    it('should return queue metrics with all required fields', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/queue/metrics')
+        .expect(200);
+
+      expect(res.body).toHaveProperty('queueName', 'orders');
+      expect(typeof res.body.waiting).toBe('number');
+      expect(typeof res.body.active).toBe('number');
+      expect(typeof res.body.completed).toBe('number');
+      expect(typeof res.body.failed).toBe('number');
+      expect(typeof res.body.delayed).toBe('number');
+      expect(typeof res.body.paused).toBe('boolean');
+      expect(res.body).toHaveProperty('health');
+      expect(['healthy', 'unhealthy']).toContain(res.body.health);
+      expect(res.body.dlq).toHaveProperty('queueName', 'orders-dlq');
+      expect(typeof res.body.dlq.count).toBe('number');
+    });
+
+    it('should reflect completed jobs after processing an order', async () => {
+      await request(app.getHttpServer())
+        .post('/webhooks/orders')
+        .send({
+          order_id: uniqueOrderId('metrics'),
+          customer: { email: 'metrics@test.com', name: 'Metrics' },
+          items: [{ sku: 'SKU1', qty: 1, unit_price: 10 }],
+          currency: 'USD',
+          idempotency_key: uniqueKey('metrics'),
+        })
+        .expect(201);
+
+      const order = await prisma.order.findFirst({
+        where: { idempotencyKey: uniqueKey('metrics') },
+      });
+      await waitForStatus(order!.id, OrderStatus.COMPLETED, 20000);
+
+      const res = await request(app.getHttpServer())
+        .get('/queue/metrics')
+        .expect(200);
+
+      expect(res.body.completed).toBeGreaterThanOrEqual(1);
+    });
+
+    it('should reflect DLQ entries after enrichment failure', async () => {
+      await request(app.getHttpServer())
+        .post('/webhooks/orders')
+        .send({
+          order_id: uniqueOrderId('metrics-dlq'),
+          customer: { email: 'mdq@test.com', name: 'MetricsDLQ' },
+          items: [{ sku: 'FAIL', qty: 1, unit_price: 10 }],
+          currency: 'INVALID_CURRENCY_XYZ',
+          idempotency_key: uniqueKey('metrics-dlq'),
+        })
+        .expect(201);
+
+      const order = await prisma.order.findFirst({
+        where: { idempotencyKey: uniqueKey('metrics-dlq') },
+      });
+      await waitForStatus(order!.id, OrderStatus.FAILED_ENRICHMENT, 30000);
+      await waitForDlqCount(1, 15000);
+
+      const res = await request(app.getHttpServer())
+        .get('/queue/metrics')
+        .expect(200);
+
+      expect(res.body.dlq.count).toBeGreaterThanOrEqual(1);
+      expect(res.body.health).toBe('unhealthy');
     });
   });
 
@@ -384,6 +619,8 @@ describe('Integration Tests', () => {
 
       expect(Array.isArray(failuresRes.body)).toBe(true);
       expect(failuresRes.body.length).toBeGreaterThanOrEqual(1);
+      expect(failuresRes.body[0].orderId).toBe(order!.id);
+      expect(failuresRes.body[0].resolved).toBe(false);
 
       const failure = failuresRes.body[0];
 
@@ -394,22 +631,41 @@ describe('Integration Tests', () => {
       expect(reprocRes.body.success).toBe(true);
       expect(reprocRes.body.message).toContain('re-enqueued');
     });
-  });
 
-  describe('Queue metrics', () => {
-    it('should return queue metrics with DLQ info', async () => {
-      const res = await request(app.getHttpServer())
-        .get('/queue/metrics')
+    it('should resolve a failure', async () => {
+      await request(app.getHttpServer())
+        .post('/webhooks/orders')
+        .send({
+          order_id: uniqueOrderId('resolve'),
+          customer: { email: 'resolve@test.com', name: 'Resolve' },
+          items: [{ sku: 'FAIL', qty: 1, unit_price: 10 }],
+          currency: 'INVALID_CURRENCY_XYZ',
+          idempotency_key: uniqueKey('resolve'),
+        })
+        .expect(201);
+
+      const order = await prisma.order.findFirst({
+        where: { idempotencyKey: uniqueKey('resolve') },
+      });
+      await waitForStatus(order!.id, OrderStatus.FAILED_ENRICHMENT, 30000);
+
+      const failuresRes = await request(app.getHttpServer())
+        .get('/admin/failures?unresolved=true')
         .expect(200);
 
-      expect(res.body).toHaveProperty('queueName', 'orders');
-      expect(res.body).toHaveProperty('waiting');
-      expect(res.body).toHaveProperty('active');
-      expect(res.body).toHaveProperty('completed');
-      expect(res.body).toHaveProperty('failed');
-      expect(res.body).toHaveProperty('dlq');
-      expect(res.body.dlq).toHaveProperty('queueName', 'orders-dlq');
-      expect(res.body.dlq).toHaveProperty('count');
+      const failure = failuresRes.body[0];
+
+      const resolveRes = await request(app.getHttpServer())
+        .post(`/admin/failures/${failure.id}/resolve`)
+        .expect(201);
+
+      expect(resolveRes.body.success).toBe(true);
+
+      const resolvedRes = await request(app.getHttpServer())
+        .get('/admin/failures?unresolved=true')
+        .expect(200);
+
+      expect(resolvedRes.body.find((f: any) => f.id === failure.id)).toBeUndefined();
     });
   });
 });
