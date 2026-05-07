@@ -191,6 +191,23 @@ BASE_URL=http://localhost:3000 k6 run k6/load-test.js
 
 O script envia payloads únicos para `POST /webhooks/orders` com rampa de 20→50→0 VUs.
 
+### Resultados em produção
+
+Teste executado contra https://order-orchestrator.up.railway.app:
+
+- **Duração:** 50s (rampa 10s→20 VUs, 30s→50 VUs, 10s→0 VUs)
+- **Requests totais:** 7,183
+- **Taxa:** 143.43 req/s
+- **Sucesso:** 100% (0 falhas)
+- **Latência média:** 191.51ms
+- **Latência P95:** 301.93ms
+- **Checks:** 14,366 validações (100% sucesso)
+
+Métricas detalhadas:
+- **HTTP req duration:** avg=191.51ms, min=157.9ms, med=168.36ms, max=1.22s, p(90)=208.62ms, p(95)=301.93ms
+- **VUs:** 1-49 (máximo 50 configurado)
+- **Dados transferidos:** 2.1 MB enviados, 2.1 MB recebidos
+
 ## CI
 
 Pipeline de CI via GitHub Actions (`.github/workflows/ci.yml`):
