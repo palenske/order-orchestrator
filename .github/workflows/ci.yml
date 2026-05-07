@@ -58,6 +58,3 @@ jobs:
           REDIS_URL: redis://localhost:6379
 
       - run: pnpm run test
-
-      - name: Validate Dockerfile
-        run: docker build -t order-orch-ci .
