@@ -9,18 +9,20 @@ on:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    env:
+      PNPM_CONFIG_MINIMUM_RELEASE_AGE: 0
     services:
       postgres:
         image: postgres:16-alpine
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: order_orch_test
+          POSTGRES_DB: order_orch
         ports:
           - 5432:5432
         options: >-
           --health-cmd pg_isready
-          --health-interval 10s
+          --health-interval 5s
           --health-timeout 5s
           --health-retries 5
       redis:
@@ -29,16 +31,15 @@ jobs:
           - 6379:6379
         options: >-
           --health-cmd "redis-cli ping"
-          --health-interval 10s
+          --health-interval 5s
           --health-timeout 5s
           --health-retries 5
-
     steps:
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: latest
 
       - uses: actions/setup-node@v4
         with:
@@ -46,15 +47,6 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
-
-      - run: pnpm run lint
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/order_orch_test
-          REDIS_URL: redis://localhost:6379
-
-      - run: pnpm run build
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/order_orch_test
-          REDIS_URL: redis://localhost:6379
-
-      - run: pnpm run test
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm build

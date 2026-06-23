@@ -3,7 +3,8 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { OrderRepository } from '../order/repositories/order.repository';
 import { CreateOrderWebhookDto } from './dto/create-order-webhook.dto';
-import type { Order } from '@prisma/client';
+import type { OrderWithRelations } from '../order/repositories/order.repository';
+import { DEFAULT_JOB_OPTIONS } from '../queue/queue.constants';
 
 @Injectable()
 export class WebhookService {
@@ -24,7 +25,7 @@ export class WebhookService {
       throw new ConflictException('Order already processed');
     }
 
-    let order: Order;
+    let order: OrderWithRelations;
     try {
       order = await this.orderRepository.create({
         externalId: dto.order_id,
@@ -58,17 +59,15 @@ export class WebhookService {
     await this.ordersQueue.add(
       'enrich-order',
       { orderId: order.id },
-      {
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 1000 },
-      },
+      DEFAULT_JOB_OPTIONS,
     );
 
     this.logger.log(`Order enqueued: ${order.id}`);
 
     return {
       success: true,
-      order_id: order.externalId,
+      order_id: order.id,
+      external_order_id: order.externalId,
       idempotency_key: order.idempotencyKey,
       status: order.status,
     };

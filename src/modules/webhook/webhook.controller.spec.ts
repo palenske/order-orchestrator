@@ -65,7 +65,8 @@ describe('WebhookController', () => {
       expect(mockRepo.create).toHaveBeenCalled();
       expect(result).toEqual({
         success: true,
-        order_id: 'ext-123',
+        order_id: 'order-1',
+        external_order_id: 'ext-123',
         idempotency_key: 'uuid-123',
         status: 'RECEIVED',
       });

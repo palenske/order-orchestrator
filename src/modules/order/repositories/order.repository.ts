@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
-import type { Prisma, Order, OrderFailure } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import { OrderStatus } from '@prisma/client';
 
 type JsonValue = Prisma.InputJsonValue;
@@ -23,9 +23,15 @@ export class OrderRepository {
     });
   }
 
-  async findByIdempotencyKey(idempotencyKey: string): Promise<Order | null> {
+  async findByIdempotencyKey(
+    idempotencyKey: string,
+  ): Promise<OrderWithRelations | null> {
     return this.prisma.order.findUnique({
       where: { idempotencyKey },
+      include: {
+        customer: true,
+        items: true,
+      },
     });
   }
 
@@ -33,7 +39,7 @@ export class OrderRepository {
     status?: OrderStatus;
     skip?: number;
     take?: number;
-  }): Promise<Order[]> {
+  }): Promise<OrderWithRelations[]> {
     const { status, skip = 0, take = 50 } = params || {};
     return this.prisma.order.findMany({
       where: status ? { status } : undefined,
@@ -58,7 +64,7 @@ export class OrderRepository {
       externalId?: string;
     };
     items: { sku: string; quantity: number; unitPrice: number }[];
-  }): Promise<Order> {
+  }): Promise<OrderWithRelations> {
     const { customer, items, ...orderData } = data;
 
     return this.prisma.order.create({
@@ -94,7 +100,7 @@ export class OrderRepository {
       enrichedData?: JsonValue;
       processedAt?: Date;
     },
-  ): Promise<Order> {
+  ): Promise<OrderWithRelations> {
     return this.prisma.order.update({
       where: { id },
       data: {
@@ -106,34 +112,6 @@ export class OrderRepository {
         customer: true,
         items: true,
       },
-    });
-  }
-
-  async findFailureById(id: string): Promise<OrderFailure | null> {
-    return this.prisma.orderFailure.findUnique({ where: { id } });
-  }
-
-  async createFailure(orderId: string, error: string): Promise<OrderFailure> {
-    return this.prisma.orderFailure.create({
-      data: {
-        orderId,
-        error,
-        attempts: 1,
-      },
-    });
-  }
-
-  async findFailures(unresolved?: boolean): Promise<OrderFailure[]> {
-    return this.prisma.orderFailure.findMany({
-      where: unresolved !== undefined ? { resolved: !unresolved } : undefined,
-      orderBy: { createdAt: 'desc' },
-    });
-  }
-
-  async resolveFailure(id: string): Promise<OrderFailure> {
-    return this.prisma.orderFailure.update({
-      where: { id },
-      data: { resolved: true, resolvedAt: new Date() },
     });
   }
 }
