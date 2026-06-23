@@ -211,8 +211,10 @@ Thresholds: p95 < 2s para requests, taxa de erro < 5%.
 Pipeline único via GitHub Actions (`.github/workflows/ci.yml`):
 
 1. Lint
-2. Migrate + testes unitários + integração (com PostgreSQL e Redis service containers)
+2. Testes unitários (37 testes)
 3. Build
+
+Testes de integração (22 testes, dependem de APIs externas) só rodam localmente: `pnpm test:integration`
 
 Jobs mergeados em um único pipeline para evitar instalação redundante de dependências.
 
