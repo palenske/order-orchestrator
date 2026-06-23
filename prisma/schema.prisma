@@ -13,7 +13,6 @@ enum OrderStatus {
   ENRICHED
   COMPLETED
   FAILED_ENRICHMENT
-  FAILED
 }
 
 model Customer {

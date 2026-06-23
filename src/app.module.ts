@@ -20,27 +20,13 @@ import { MetricsModule } from './infrastructure/metrics/metrics.module';
     LoggerModule.forRoot({
       pinoHttp: {
         level: process.env.NODE_ENV !== 'production' ? 'debug' : 'info',
-        transport: {
-          targets: [
-            ...(process.env.NODE_ENV !== 'production'
-              ? [
-                  {
-                    target: 'pino-pretty',
-                    options: { colorize: true },
-                    level: 'debug',
-                  },
-                ]
-              : []),
-            {
-              target: 'pino-loki',
-              options: {
-                host: process.env.LOKI_HOST || 'http://loki:3100',
-                labels: { app: 'order-orchestrator' },
-              },
-              level: 'info',
-            },
-          ],
-        },
+        transport:
+          process.env.NODE_ENV !== 'production'
+            ? {
+                target: 'pino-pretty',
+                options: { colorize: true },
+              }
+            : undefined,
       },
     }),
     PrismaModule,

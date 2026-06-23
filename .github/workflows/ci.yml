@@ -7,24 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: latest
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm lint
-
-  test:
+  ci:
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -62,6 +45,7 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
       - run: pnpm db:migrate
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/order_orch
@@ -73,54 +57,4 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/order_orch
           REDIS_URL: redis://localhost:6379
-
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: latest
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
       - run: pnpm build
-
-  deploy:
-    needs: [lint, test, build]
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: sa-east-1
-
-      - id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Build and push Docker image
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          docker build -t $ECR_REGISTRY/order-orchestrator:$IMAGE_TAG .
-          docker tag $ECR_REGISTRY/order-orchestrator:$IMAGE_TAG $ECR_REGISTRY/order-orchestrator:latest
-          docker push $ECR_REGISTRY/order-orchestrator:$IMAGE_TAG
-          docker push $ECR_REGISTRY/order-orchestrator:latest
-
-      - name: Deploy to ECS
-        run: |
-          aws ecs update-service \
-            --cluster order-orchestrator \
-            --service order-orchestrator-api \
-            --task-definition order-orchestrator-api \
-            --force-new-deployment

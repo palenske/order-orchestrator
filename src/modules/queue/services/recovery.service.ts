@@ -3,6 +3,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { OrderRepository } from '../../order/repositories/order.repository';
 import { OrderStatus } from '@prisma/client';
+import { DEFAULT_JOB_OPTIONS } from '../queue.constants';
 
 @Injectable()
 export class RecoveryService {
@@ -33,10 +34,7 @@ export class RecoveryService {
         await this.ordersQueue.add(
           'enrich-order',
           { orderId: order.id },
-          {
-            attempts: 3,
-            backoff: { type: 'exponential', delay: 1000 },
-          },
+          DEFAULT_JOB_OPTIONS,
         );
         recovered++;
       } catch (error) {

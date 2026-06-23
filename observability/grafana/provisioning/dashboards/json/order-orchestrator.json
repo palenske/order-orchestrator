@@ -1,7 +1,7 @@
 {
   "title": "Order Orchestrator",
   "uid": "order-orchestrator",
-  "version": 1,
+  "version": 2,
   "tags": ["order-orch", "nestjs"],
   "schemaVersion": 39,
   "timezone": "browser",
@@ -14,7 +14,7 @@
       "targets": [
         {
           "expr": "rate(http_requests_total[1m])",
-          "legendFormat": "{{ route }}"
+          "legendFormat": "{{ route }} ({{ method }})"
         }
       ],
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 }
@@ -32,50 +32,61 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 }
     },
     {
-      "title": "Queue Jobs Processed",
+      "title": "HTTP Error Rate",
       "type": "graph",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "rate(queue_jobs_processed_total[1m])",
-          "legendFormat": "{{ queue }} - {{ outcome }}"
+          "expr": "rate(http_requests_total{status_code=~\"5..\"}[1m])",
+          "legendFormat": "5xx {{ route }}"
         }
       ],
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 }
     },
     {
-      "title": "External API Latency",
+      "title": "Requests by Status Code",
       "type": "graph",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum(rate(external_api_request_duration_seconds_bucket[5m])) by (le, service))",
-          "legendFormat": "{{ service }}"
+          "expr": "rate(http_requests_total[1m])",
+          "legendFormat": "{{ status_code }}"
         }
       ],
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 }
     },
     {
-      "title": "DLQ Health",
+      "title": "Active Queue Jobs",
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "max(queue_jobs_processed_total{outcome=\"failed\"})"
+          "expr": "count(http_requests_total{route=~\"/webhooks/orders\"})"
         }
       ],
-      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 16 }
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 16 }
     },
     {
-      "title": "Recent Errors",
-      "type": "logs",
-      "datasource": { "type": "loki", "uid": "loki" },
+      "title": "Total Orders Created",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
-          "expr": "{app=\"order-orchestrator\"} |= \"error\""
+          "expr": "count(http_requests_total{route=\"/webhooks/orders\"})"
         }
       ],
-      "gridPos": { "h": 10, "w": 18, "x": 6, "y": 16 }
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 16 }
+    },
+    {
+      "title": "Avg Request Duration (last 5m)",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "rate(http_request_duration_seconds_sum[5m]) / rate(http_request_duration_seconds_count[5m])"
+        }
+      ],
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 16 }
     }
   ]
 }

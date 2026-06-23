@@ -97,10 +97,9 @@ export class EnrichmentService {
     );
 
     let cepInfo: CepInfoResult | undefined;
-    if (order.customer?.cep) {
-      cepInfo = await this.trackExternal('viacep', () =>
-        this.getCepInfo(order.customer!.cep!),
-      );
+    const cep = order.customer?.cep;
+    if (cep) {
+      cepInfo = await this.trackExternal('viacep', () => this.getCepInfo(cep));
     }
 
     return {
@@ -164,6 +163,10 @@ export class EnrichmentService {
     const response = await this.fetchWithTimeout(
       'http://ip-api.com/json/?fields=status,country,city,isp,query',
     );
+
+    if (!response.ok) {
+      throw new Error(`IP info API returned ${response.status}`);
+    }
 
     const data = (await response.json()) as {
       status: string;

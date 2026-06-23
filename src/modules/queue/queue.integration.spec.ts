@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { EnrichmentService } from './services/enrichment.service';
 import { OrderRepository } from '../order/repositories/order.repository';
+import { FailureRepository } from '../order/repositories/failure.repository';
 import { OrderProcessor } from './processors/order.processor';
 import { MetricsService } from '../../infrastructure/metrics/metrics.service';
 import { OrderStatus } from '@prisma/client';
@@ -8,6 +9,7 @@ import { OrderStatus } from '@prisma/client';
 describe('Order Queue Flow', () => {
   let processor: OrderProcessor;
   let repository: OrderRepository;
+  let failureRepository: FailureRepository;
   let enrichmentService: EnrichmentService;
 
   const mockOrder = {
@@ -36,6 +38,7 @@ describe('Order Queue Flow', () => {
   } as any;
 
   let mockRepo: any;
+  let mockFailureRepo: any;
   let mockDlqQueue: any;
   let mockMetricsService: any;
   let fetchSpy: jest.SpiedFunction<typeof globalThis.fetch>;
@@ -73,8 +76,10 @@ describe('Order Queue Flow', () => {
       updateStatus: jest
         .fn()
         .mockResolvedValue({ ...mockOrder, status: OrderStatus.COMPLETED }),
-      createFailure: jest.fn(),
-      findFailures: jest.fn().mockResolvedValue([]),
+    };
+
+    mockFailureRepo = {
+      create: jest.fn(),
     };
 
     mockDlqQueue = {
@@ -93,6 +98,7 @@ describe('Order Queue Flow', () => {
         OrderProcessor,
         EnrichmentService,
         { provide: OrderRepository, useValue: mockRepo },
+        { provide: FailureRepository, useValue: mockFailureRepo },
         { provide: 'BullQueue_orders-dlq', useValue: mockDlqQueue },
         { provide: MetricsService, useValue: mockMetricsService },
       ],
@@ -100,6 +106,7 @@ describe('Order Queue Flow', () => {
 
     processor = app.get<OrderProcessor>(OrderProcessor);
     repository = app.get<OrderRepository>(OrderRepository);
+    failureRepository = app.get<FailureRepository>(FailureRepository);
     enrichmentService = app.get<EnrichmentService>(EnrichmentService);
   });
 
@@ -188,7 +195,7 @@ describe('Order Queue Flow', () => {
       );
 
       expect(repository.updateStatus).not.toHaveBeenCalled();
-      expect(repository.createFailure).not.toHaveBeenCalled();
+      expect(mockFailureRepo.create).not.toHaveBeenCalled();
       expect(mockDlqQueue.add).not.toHaveBeenCalled();
     });
   });
@@ -200,43 +207,6 @@ describe('Order Queue Flow', () => {
       expect(result.exchangeRate).toBe(1.1);
       expect(result.convertedTotal).toBe(110);
       expect(result.rateSource).toBe('ExchangeRate-API');
-    });
-  });
-
-  describe('Status Transitions', () => {
-    it('should transition from RECEIVED to PROCESSING', async () => {
-      await repository.updateStatus('order-test-1', OrderStatus.PROCESSING);
-      expect(repository.updateStatus).toHaveBeenCalledWith(
-        'order-test-1',
-        OrderStatus.PROCESSING,
-      );
-    });
-
-    it('should transition from PROCESSING to ENRICHED', async () => {
-      await repository.updateStatus('order-test-1', OrderStatus.ENRICHED);
-      expect(repository.updateStatus).toHaveBeenCalledWith(
-        'order-test-1',
-        OrderStatus.ENRICHED,
-      );
-    });
-
-    it('should transition to FAILED_ENRICHMENT on error', async () => {
-      await repository.updateStatus(
-        'order-test-1',
-        OrderStatus.FAILED_ENRICHMENT,
-      );
-      expect(repository.updateStatus).toHaveBeenCalledWith(
-        'order-test-1',
-        OrderStatus.FAILED_ENRICHMENT,
-      );
-    });
-
-    it('should transition from ENRICHED to COMPLETED', async () => {
-      await repository.updateStatus('order-test-1', OrderStatus.COMPLETED);
-      expect(repository.updateStatus).toHaveBeenCalledWith(
-        'order-test-1',
-        OrderStatus.COMPLETED,
-      );
     });
   });
 });

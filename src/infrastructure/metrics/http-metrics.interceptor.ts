@@ -42,9 +42,9 @@ export class HttpMetricsInterceptor implements NestInterceptor {
             duration,
           );
         },
-        error: (error: { status?: number }) => {
+        error: (error: { status?: number; statusCode?: number }) => {
           const duration = (Date.now() - start) / 1000;
-          const statusCode = error.status ?? 500;
+          const statusCode = error.status ?? error.statusCode ?? 500;
 
           this.metricsService.httpRequestsTotal.inc({
             method,
