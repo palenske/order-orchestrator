@@ -1,0 +1,81 @@
+{
+  "title": "Order Orchestrator",
+  "uid": "order-orchestrator",
+  "version": 1,
+  "tags": ["order-orch", "nestjs"],
+  "schemaVersion": 39,
+  "timezone": "browser",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "title": "HTTP Requests Rate",
+      "type": "graph",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "rate(http_requests_total[1m])",
+          "legendFormat": "{{ route }}"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 }
+    },
+    {
+      "title": "HTTP Latency P95",
+      "type": "graph",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, route))",
+          "legendFormat": "{{ route }}"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 }
+    },
+    {
+      "title": "Queue Jobs Processed",
+      "type": "graph",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "rate(queue_jobs_processed_total[1m])",
+          "legendFormat": "{{ queue }} - {{ outcome }}"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 }
+    },
+    {
+      "title": "External API Latency",
+      "type": "graph",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(external_api_request_duration_seconds_bucket[5m])) by (le, service))",
+          "legendFormat": "{{ service }}"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 }
+    },
+    {
+      "title": "DLQ Health",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "max(queue_jobs_processed_total{outcome=\"failed\"})"
+        }
+      ],
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 16 }
+    },
+    {
+      "title": "Recent Errors",
+      "type": "logs",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "expr": "{app=\"order-orchestrator\"} |= \"error\""
+        }
+      ],
+      "gridPos": { "h": 10, "w": 18, "x": 6, "y": 16 }
+    }
+  ]
+}

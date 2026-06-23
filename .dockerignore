@@ -1,0 +1,14 @@
+node_modules
+dist
+coverage
+.git
+.gitignore
+.env
+.env.example
+*.md
+.vscode
+docker-compose.yml
+Dockerfile
+.dockerignore
+k6
+observability

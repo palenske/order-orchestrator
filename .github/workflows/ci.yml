@@ -7,7 +7,24 @@ on:
     branches: [main]
 
 jobs:
-  ci:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+
+  test:
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -15,12 +32,12 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: order_orch_test
+          POSTGRES_DB: order_orch
         ports:
           - 5432:5432
         options: >-
           --health-cmd pg_isready
-          --health-interval 10s
+          --health-interval 5s
           --health-timeout 5s
           --health-retries 5
       redis:
@@ -29,16 +46,15 @@ jobs:
           - 6379:6379
         options: >-
           --health-cmd "redis-cli ping"
-          --health-interval 10s
+          --health-interval 5s
           --health-timeout 5s
           --health-retries 5
-
     steps:
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: latest
 
       - uses: actions/setup-node@v4
         with:
@@ -46,15 +62,65 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
-
-      - run: pnpm run lint
+      - run: pnpm db:migrate
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/order_orch_test
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/order_orch
+      - run: pnpm test
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/order_orch
+          REDIS_URL: redis://localhost:6379
+      - run: pnpm test:integration
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/order_orch
           REDIS_URL: redis://localhost:6379
 
-      - run: pnpm run build
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/order_orch_test
-          REDIS_URL: redis://localhost:6379
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
-      - run: pnpm run test
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+  deploy:
+    needs: [lint, test, build]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: sa-east-1
+
+      - id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push Docker image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/order-orchestrator:$IMAGE_TAG .
+          docker tag $ECR_REGISTRY/order-orchestrator:$IMAGE_TAG $ECR_REGISTRY/order-orchestrator:latest
+          docker push $ECR_REGISTRY/order-orchestrator:$IMAGE_TAG
+          docker push $ECR_REGISTRY/order-orchestrator:latest
+
+      - name: Deploy to ECS
+        run: |
+          aws ecs update-service \
+            --cluster order-orchestrator \
+            --service order-orchestrator-api \
+            --task-definition order-orchestrator-api \
+            --force-new-deployment
