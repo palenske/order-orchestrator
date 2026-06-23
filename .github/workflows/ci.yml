@@ -45,6 +45,8 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+        env:
+          PNPM_CONFIG_MINIMUM_RELEASE_AGE: 0
       - run: pnpm lint
       - run: pnpm db:migrate
         env:
