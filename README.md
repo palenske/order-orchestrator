@@ -22,8 +22,14 @@ curl -X POST "https://order-orchestrator.up.railway.app/webhooks/orders" \
 
 ```bash
 pnpm install
-docker compose up -d
-pnpm db:migrate
+```
+
+## Stack local
+
+```bash
+docker compose up -d                # postgres, redis, app, prometheus, grafana
+pnpm db:migrate                     # apenas primeira vez
+pnpm start:dev                      # ou docker compose up -d app
 ```
 
 Variáveis de ambiente (`.env`):
@@ -34,28 +40,11 @@ REDIS_URL=redis://localhost:6379
 WEBHOOK_SECRET=          # vazio = verificação desabilitada
 ```
 
-## Executar
-
-```bash
-pnpm start:dev           # desenvolvimento
-pnpm start:prod          # produção
-```
-
 ## Testar
 
 ```bash
-pnpm test                      # unitários (41 testes)
+pnpm test                      # unitários (37 testes)
 pnpm test:integration          # integração (22 testes, requer DB e Redis)
-```
-
-### Testes de integração
-
-Requer PostgreSQL e Redis rodando (via Docker ou local):
-
-```bash
-docker compose up -d
-pnpm db:migrate
-pnpm test:integration
 ```
 
 Cobertura dos testes de integração:
@@ -122,17 +111,24 @@ POST /admin/failures/:id/reprocess     # reenfileirar pedido
 ### Observabilidade
 
 ```
-GET /metrics   # métricas Prometheus
+GET /metrics   # métricas Prometheus (text/plain)
 ```
 
-Métricas disponíveis:
+Métricas expostas:
 
 | Métrica | Tipo | Descrição |
 |---------|------|-----------|
 | `http_requests_total` | Counter | Requests HTTP por método, rota e status |
 | `http_request_duration_seconds` | Histogram | Latência HTTP |
-| `queue_jobs_processed_total` | Counter | Jobs processados por fila e resultado (completed/failed) |
-| `external_api_request_duration_seconds` | Histogram | Latência das APIs externas por serviço e resultado |
+
+**Grafana:** http://localhost:3001 (admin/admin)
+
+Dashboard "Order Orchestrator" pré-provisionado com painéis de taxa de requests, latência P95, taxa de erro (5xx) e média de duração. Prometheus scrape a cada 15s do endpoint `/metrics`.
+
+```bash
+# stack de monitoramento (já sobe com docker compose up -d)
+docker compose up -d prometheus grafana
+```
 
 ## Fluxo de processamento
 
@@ -186,43 +182,51 @@ curl -X POST http://localhost:3000/webhooks/orders \
 
 ```bash
 # Requer k6 (https://k6.io)
-BASE_URL=http://localhost:3000 k6 run k6/load-test.js
+
+# Cenário misto: browse + create (default)
+k6 run k6/load-test.js
+
+# Apenas browse (GET /orders)
+SCENARIO=browse k6 run k6/load-test.js
+
+# Apenas criação via webhook
+SCENARIO=create k6 run k6/load-test.js
+
+# URL customizada
+BASE_URL=http://localhost:3000 SCENARIO=mixed k6 run k6/load-test.js
 ```
 
-O script envia payloads únicos para `POST /webhooks/orders` com rampa de 20→50→0 VUs.
+O script executa 3 cenários:
 
-### Resultados em produção
+| Cenário | VUs | Duração | O que testa |
+|---------|-----|---------|-------------|
+| `browse` | até 30 | 40s (rampa) | GET /orders + GET /metrics |
+| `create` | até 15 | 40s (rampa) | POST /webhooks/orders + GET /orders/:id |
+| `mixed` (default) | 45 total | 40s | browse + create simultâneos |
 
-Teste executado contra https://order-orchestrator.up.railway.app:
-
-- **Duração:** 50s (rampa 10s→20 VUs, 30s→50 VUs, 10s→0 VUs)
-- **Requests totais:** 7,183
-- **Taxa:** 143.43 req/s
-- **Sucesso:** 100% (0 falhas)
-- **Latência média:** 191.51ms
-- **Latência P95:** 301.93ms
-- **Checks:** 14,366 validações (100% sucesso)
-
-Métricas detalhadas:
-- **HTTP req duration:** avg=191.51ms, min=157.9ms, med=168.36ms, max=1.22s, p(90)=208.62ms, p(95)=301.93ms
-- **VUs:** 1-49 (máximo 50 configurado)
-- **Dados transferidos:** 2.1 MB enviados, 2.1 MB recebidos
+Thresholds: p95 < 2s para requests, taxa de erro < 5%.
 
 ## CI
 
-Pipeline de CI via GitHub Actions (`.github/workflows/ci.yml`):
+Pipeline único via GitHub Actions (`.github/workflows/ci.yml`):
 
-- Lint (`pnpm lint`)
-- Build (`pnpm build`)
-- Testes unitários
+1. Lint
+2. Migrate + testes unitários + integração (com PostgreSQL e Redis service containers)
+3. Build
+
+Jobs mergeados em um único pipeline para evitar instalação redundante de dependências.
 
 ## Recuperação automática
 
 Se o processo falhar entre persistir o pedido e enfileirar o job, o pedido fica em `RECEIVED` sem processamento. Na inicialização, o `RecoveryService` busca todos os pedidos com status `RECEIVED` e os reenfileira automaticamente. Isso garante que nenhum pedido fique preso, mesmo após crashes ou reinícios.
 
+Falhas persistentes (após 3 tentativas com backoff exponencial) são registradas no `FailureRepository` e expostas em `GET /admin/failures`.
+
 ## Limitações conhecidas
 
-Todos os enriquecimentos rodam em uma única fila `orders`. Se qualquer serviço externo falhar, o job inteiro é retentado — incluindo os serviços que já haviam respondido com sucesso. Uma evolução natural seria filas dedicadas por step (câmbio, IP, produtos, CEP), cada uma com seu próprio DLQ e política de retry. Isso permitiria retry granular (ex: 5 tentativas para CEP, 3 para câmbio), isolamento de falhas por serviço, e visibilidade individual de saúde por fila no `/queue/metrics`.
+Todos os enriquecimentos rodam em uma única fila `orders`. Se qualquer serviço externo falhar, o job inteiro é retentado — incluindo os serviços que já haviam respondido com sucesso. Uma evolução natural seria filas dedicadas por step (câmbio, IP, produtos, CEP), cada uma com seu próprio DLQ e política de retry. Isso permitiria retry granular (ex: 5 tentativas para CEP, 3 para câmbio), isolamento de falhas por serviço, e visibilidade individual de saúde por fila no `GET /queue/metrics`.
+
+O OpenTelemetry está desabilitado por padrão — ative com `OTEL_EXPORTER_OTLP_ENDPOINT`. O dashboard Grafana não inclui painéis de tracing distribuído porque o app roda em monólito (sem micro-serviços para rastrear).
 
 ## Stack
 
@@ -230,4 +234,12 @@ Todos os enriquecimentos rodam em uma única fila `orders`. Se qualquer serviço
 - **BullMQ + Redis** — fila, retry e DLQ
 - **Prisma + PostgreSQL** — persistência
 - **class-validator** — validação de payload
-- **prom-client** — métricas Prometheus
+- **prom-client + Prometheus + Grafana** — métricas e dashboards
+- **pnpm v11** — `pnpm-workspace.yaml` com `allowBuilds` para compatibilidade de builds nativos
+
+## Pré-requisitos
+
+- Node.js 22+
+- pnpm (corepack gerenciado: `corepack enable && corepack prepare pnpm@latest --activate`)
+- Docker + Docker Compose
+- k6 (para teste de carga)
